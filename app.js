@@ -1,6 +1,7 @@
 "use strict";
 /* ================================================================
-   Stamp Studio — Hover Select + Left Panel + Always-Visible Colors
+   Stamp Studio — Full Rebuild
+   Sidebar toggle · Floating Controls · 10x10" Canvas · Ring Controls · Arabic fix
    ================================================================ */
 
 const CSS_DPI = 96, CSS_MM = CSS_DPI / 25.4, DEG = Math.PI / 180;
@@ -185,7 +186,7 @@ let cfg = buildConfig('oval');
 let selId = cfg.layers[0].id;
 let selectedIds = new Set([selId]);
 let selShape = false, selRing = null, exporting = false;
-let currentElement = null; // 'outer-ring' | 'inner-ring' | 'center-ring' | 'arc-top' | 'arc-bottom' | layer id
+let currentElement = null;
 
 const selLayer = () => cfg.layers.find(l => l.id === selId) || null;
 const stampSize = () => cfg.shape === 'circle' ? { w: cfg.outerDiameter, h: cfg.outerDiameter } : { w: cfg.width, h: cfg.height };
@@ -196,6 +197,72 @@ const ctx = canvas.getContext('2d', { alpha: true });
 const viewport = document.getElementById('viewport');
 const stage = document.getElementById('stage');
 const zoomLabel = document.getElementById('zoomLabel');
+
+/* ═══ SIDEBAR TOGGLE ═══ */
+function initSidebarToggle() {
+  const panel = document.getElementById('leftPanel');
+  const btn = document.getElementById('sidebarToggle');
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('collapsed');
+    btn.textContent = panel.classList.contains('collapsed') ? '☰' : '✕';
+  });
+}
+
+/* ═══ FLOATING PANEL DRAG ═══ */
+function initFloatingPanel() {
+  const panel = document.getElementById('floatingPanel');
+  const header = document.getElementById('fpHeader');
+  const close = document.getElementById('fpClose');
+
+  close.addEventListener('click', () => {
+    panel.classList.remove('open');
+  });
+
+  let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
+
+  header.addEventListener('mousedown', e => {
+    if (e.target.closest('.fp-close')) return;
+    isDragging = true;
+    const rect = panel.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    panel.style.transition = 'none';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const x = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - dragOffsetX));
+    const y = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - dragOffsetY));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+    panel.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    document.body.style.userSelect = '';
+    panel.style.transition = '';
+  });
+}
+
+/* ═══ 10x10 INCH CANVAS ═══ */
+function setupCanvas() {
+  // 10x10 inches at 300 DPI = 3000x3000px
+  const canvasSizePx = 10 * 300; // 3000px
+  canvas.width = canvasSizePx;
+  canvas.height = canvasSizePx;
+  // CSS size: fit within viewport while maintaining aspect ratio
+  updateCanvasCSS();
+}
+
+function updateCanvasCSS() {
+  const vpW = viewport.clientWidth - 40;
+  const vpH = viewport.clientHeight - 40;
+  const size = Math.min(vpW, vpH, 600);
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+}
 
 /* ================================================================
    DRAWING
@@ -247,7 +314,7 @@ function drawGeometry(cx, cy, wPx, hPx, color) {
   }
 }
 
-/* ── Text Rendering ────────────────────────────────────────────── */
+/* ── Text Rendering (Arabic fix) ──────────────────────────────── */
 function textEllipseMm(layer) {
   const sz = stampSize();
   const r = layer.radiusMm;
@@ -274,7 +341,9 @@ function buildTextStrip(layer, color) {
   sc.font = fontStr;
   if ('letterSpacing' in sc) sc.letterSpacing = `${layer.letterSpacing}px`;
   if ('wordSpacing' in sc) sc.wordSpacing = `${layer.wordSpacing}px`;
-  sc.fillStyle = color; sc.textAlign = 'center'; sc.textBaseline = 'middle'; sc.direction = dir;
+  sc.fillStyle = color; sc.textAlign = 'center'; sc.textBaseline = 'middle';
+  // Arabic fix: set direction on context
+  sc.direction = dir;
   sc.translate(sw/2, sh/2); sc.scale(sx, sy); sc.fillText(layer.text, 0, 0);
   return { canvas: strip, textWidth: textW, pad };
 }
@@ -319,7 +388,9 @@ function drawStraightLayer(layer, cx, cy, color, rng) {
     ctx.font = `${safeWeight(layer.font, layer.weight)} ${fontPx}px "${layer.font}"`;
     if ('letterSpacing' in ctx) ctx.letterSpacing = `${layer.letterSpacing}px`;
     if ('wordSpacing' in ctx) ctx.wordSpacing = `${layer.wordSpacing}px`;
-    ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.direction = layerDir(layer);
+    ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Arabic fix: set text direction
+    ctx.direction = layerDir(layer);
     const sx = layer.scaleX||1, sy = layer.scaleY||1;
     if (cfg.rotationJitter && cfg.jitterDegrees > 0) {
       ctx.translate(tx, ty); ctx.rotate((rng()*2-1)*cfg.jitterDegrees*DEG*0.5); ctx.scale(sx, sy); ctx.fillText(layer.text, 0, 0);
@@ -369,468 +440,147 @@ function drawShapeLayer(layer, cx, cy, color, rng) {
 const imageCache = {};
 function drawImageLayer(layer, cx, cy) {
   if (!layer.imageData) return;
-  const tx = cx + mmPx(layer.offsetXmm), ty = cy + mmPx(layer.offsetYmm);
-  const w = mmPx(layer.imageWidthMm), h = mmPx(layer.imageHeightMm);
-  if (imageCache[layer.imageData]) {
-    ctx.save(); ctx.globalAlpha = (cfg.opacity||100)/100;
-    ctx.drawImage(imageCache[layer.imageData], tx-w/2, ty-h/2, w, h); ctx.restore();
-  } else {
-    const img = new Image();
-    img.onload = () => { imageCache[layer.imageData] = img; render(); };
+  let img = imageCache[layer.id];
+  if (!img) {
+    img = new Image();
+    img.onload = () => { imageCache[layer.id] = img; render(); };
     img.src = layer.imageData;
+    return;
   }
-}
-
-function applyGrunge(rng, amount) {
-  if (!cfg.grungeTexture || amount <= 0) return;
-  const iData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const d = iData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i+3] < 8) continue;
-    const noise = (rng()-0.5)*amount*200;
-    d[i+3] = clamp(d[i+3]+noise, 0, 255);
-  }
-  ctx.putImageData(iData, 0, 0);
-}
-
-/* ── Editor Overlays ──────────────────────────────────────────── */
-function drawEditorOverlays() {
-  if (exporting) return;
-  const cx = canvas.width/2, cy = canvas.height/2;
-  const offPxX = mmPx(cfg.shapeOffsetXmm||0), offPxY = mmPx(cfg.shapeOffsetYmm||0);
-  const scx = cx+offPxX, scy = cy+offPxY;
-  const sz = stampSize();
-
-  ctx.save();
-
-  // Center guides
-  ctx.strokeStyle = 'rgba(79,140,255,.15)'; ctx.lineWidth = 1; ctx.setLineDash([3,5]);
-  ctx.beginPath(); ctx.moveTo(scx,0); ctx.lineTo(scx,canvas.height); ctx.moveTo(0,scy); ctx.lineTo(canvas.width,scy); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Shape selection outline
-  if (selShape) {
-    const hw = mmPx(sz.w)/2, hh = mmPx(sz.h)/2;
-    ctx.strokeStyle='rgba(79,140,255,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
-    ctx.strokeRect(scx-hw-1, scy-hh-1, hw*2+2, hh*2+2);
-    ctx.setLineDash([]);
-    ctx.font='600 9px sans-serif'; ctx.fillStyle='rgba(79,140,255,.8)'; ctx.textAlign='center';
-    ctx.fillText(`${sz.w.toFixed(1)} x ${sz.h.toFixed(1)} mm`, scx, scy+hh+14);
-    ctx.restore(); return;
-  }
-
-  // Layer outlines
-  cfg.layers.forEach(ml => {
-    if (!selectedIds.has(ml.id) || !ml.visible) return;
-    const isPrimary = ml.id === selId;
-    ctx.strokeStyle = isPrimary ? 'rgba(79,140,255,.6)' : 'rgba(79,140,255,.25)';
-    ctx.lineWidth = isPrimary ? 1.5 : 1;
-    ctx.setLineDash(isPrimary ? [4,3] : [2,3]);
-    if (ml.mode === 'curved') {
-      const _e = textEllipseMm(ml);
-      ctx.beginPath(); ctx.ellipse(cx, cy, mmPx(_e.rx), mmPx(_e.ry), 0, ml.startAngle*DEG, ml.endAngle*DEG); ctx.stroke();
-    } else if (ml.mode === 'straight') {
-      const tx = cx+mmPx(ml.offsetXmm), ty = cy+mmPx(ml.offsetYmm);
-      ctx.font = `${safeWeight(ml.font,ml.weight)} ${mmPx(ml.sizeMm)}px "${ml.font}"`;
-      const tw = ctx.measureText(ml.text).width, th = mmPx(ml.sizeMm);
-      ctx.beginPath(); ctx.rect(tx-tw/2-6, ty-th/2-5, tw+12, th+10); ctx.stroke();
-    } else if (ml.type === 'shape') {
-      const tx = cx+mmPx(ml.offsetXmm), ty = cy+mmPx(ml.offsetYmm);
-      ctx.beginPath(); ctx.arc(tx, ty, mmPx(ml.shapeSizeMm)+3, 0, Math.PI*2); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-  });
-
-  // Layer name label on canvas (follows mouse)
-  if (hoveredLayer && hoveredLayer.visible) {
-    const l = hoveredLayer;
-    ctx.save(); ctx.font='600 9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    let lblX, lblY;
-    if (l.mode === 'curved') {
-      const thetaM = ((l.startAngle+l.endAngle)/2)*DEG;
-      const _le = textEllipseMm(l);
-      lblX = cx+Math.cos(thetaM)*mmPx(_le.rx);
-      lblY = cy+Math.sin(thetaM)*mmPx(_le.ry)-mmPx(l.sizeMm)*0.6-8;
-    } else {
-      lblX = cx+mmPx(l.offsetXmm); lblY = cy+mmPx(l.offsetYmm)-mmPx(l.sizeMm)*0.6-8;
-    }
-    const lblText = l.name || l.text || 'Layer';
-    const lblW = ctx.measureText(lblText).width+10;
-    ctx.fillStyle='rgba(35,35,40,.85)'; roundRectPath(lblX-lblW/2, lblY-6, lblW, 12, 3); ctx.fill();
-    ctx.fillStyle='#fff'; ctx.fillText(lblText, lblX, lblY); ctx.restore();
-  }
-
-  ctx.restore();
+  const w = mmPx(layer.imageWidthMm), h = mmPx(layer.imageHeightMm);
+  ctx.save(); ctx.translate(cx + mmPx(layer.offsetXmm), cy + mmPx(layer.offsetYmm));
+  ctx.drawImage(img, -w/2, -h/2, w, h); ctx.restore();
 }
 
 /* ── Main Render ───────────────────────────────────────────────── */
 function render() {
-  const sz = stampSize(), pad = cfg.paddingMm;
-  const wPx = Math.round(mmPx(sz.w+pad*2)), hPx = Math.round(mmPx(sz.h+pad*2));
-  if (canvas.width !== wPx || canvas.height !== hPx) { canvas.width = wPx; canvas.height = hPx; }
-  ctx.clearRect(0, 0, wPx, hPx);
+  setupCanvas();
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
 
-  const cx = wPx/2, cy = hPx/2;
-  const scx = cx+mmPx(cfg.shapeOffsetXmm||0), scy = cy+mmPx(cfg.shapeOffsetYmm||0);
-  const stampW = mmPx(sz.w), stampH = mmPx(sz.h);
+  // White background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Stamp dimensions in px (10x10 inch = 3000px at 300dpi)
+  const stampW = mmPx(stampSize().w);
+  const stampH = mmPx(stampSize().h);
+  const cx = W/2 + mmPx(cfg.shapeOffsetXmm || 0);
+  const cy = H/2 + mmPx(cfg.shapeOffsetYmm || 0);
+
   const color = hexRgba(cfg.inkColor, cfg.opacity);
   const rng = mkRng(cfg.seed);
 
-  drawGeometry(scx, scy, stampW, stampH, color);
+  // Draw geometry (rings)
+  drawGeometry(cx, cy, stampW, stampH, color);
+
+  // Draw layers
   cfg.layers.forEach(layer => {
     if (!layer.visible) return;
-    if (layer.type === 'shape') drawShapeLayer(layer, cx, cy, color, rng);
+    if (layer.type === 'text' && layer.mode === 'curved') drawCurvedLayer(layer, cx, cy, color, rng);
+    else if (layer.type === 'text' && layer.mode === 'straight') drawStraightLayer(layer, cx, cy, color, rng);
+    else if (layer.type === 'shape') drawShapeLayer(layer, cx, cy, color, rng);
     else if (layer.type === 'image') drawImageLayer(layer, cx, cy);
-    else if (layer.mode === 'curved') drawCurvedLayer(layer, cx, cy, color, rng);
-    else drawStraightLayer(layer, cx, cy, color, rng);
   });
-  applyGrunge(rng, cfg.grungeAmount);
-  drawEditorOverlays();
-}
 
-const renderD = debounce(render, 40);
-
-/* ── Zoom / Pan ────────────────────────────────────────────────── */
-function updateTransform() {
-  stage.style.transform = `translate(-50%,-50%) translate(${cfg.editorPanX}px,${cfg.editorPanY}px) scale(${cfg.editorZoom})`;
-  zoomLabel.textContent = Math.round(cfg.editorZoom*100) + '%';
-}
-
-function setZoom(v, resetPan=false) { cfg.editorZoom = clamp(v, 0.06, 14); if(resetPan){cfg.editorPanX=0;cfg.editorPanY=0;} updateTransform(); }
-
-function fitView() {
-  const vp = viewport.getBoundingClientRect(), sz = stampSize();
-  const cw = (sz.w+cfg.paddingMm*2)*CSS_MM, ch = (sz.h+cfg.paddingMm*2)*CSS_MM;
-  setZoom(Math.min((vp.width-80)/cw, (vp.height-80)/ch), true);
-}
-
-function getCanvasCoords(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return {x:0,y:0};
-  return {x:(clientX-rect.left)*(canvas.width/rect.width), y:(clientY-rect.top)*(canvas.height/rect.height)};
-}
-
-function canvasToMm(x, y) {
-  const cx = canvas.width/2, cy = canvas.height/2, ppmm = DPI_CURRENT/25.4;
-  return { dxMm:(x-cx)/ppmm, dyMm:(y-cy)/ppmm };
-}
-
-function getShapeAspect() {
-  if (cfg.shape === 'circle') return 1;
-  const sz = stampSize(); return sz.w>0?(sz.h/sz.w):1;
-}
-
-/* ================================================================
-   HOVER-TO-SELECT + LEFT PANEL
-   ================================================================ */
-
-let hoveredLayer = null;
-let isDragging = false;
-
-/* ── Hit Test: Find element at mm coordinates ──────────────────── */
-function hitTest(mmCoords) {
-  const sz = stampSize();
-  const cx = canvas.width/2, cy = canvas.height/2;
-  const hW = mmPx(sz.w)/2, hH = mmPx(sz.h)/2;
-  const relDx = mmCoords.dxMm - (cfg.shapeOffsetXmm||0);
-  const relDy = mmCoords.dyMm - (cfg.shapeOffsetYmm||0);
-
-  // Check rings first (outermost to innermost)
-  if (cfg.shape === 'circle') {
-    const r = Math.hypot(relDx, relDy);
-    const outerR = sz.w/2;
-    const outerInner = Math.max(0, outerR - cfg.outerRingThickness);
-    if (r >= outerInner-1 && r <= outerR+2) return { type: 'ring', id: 'outer-ring' };
-    if (cfg.rings >= 2 && cfg.innerRingThickness > 0) {
-      const gapStart = outerInner - cfg.ringGap;
-      if (r >= Math.max(0,gapStart-cfg.innerRingThickness)-1 && r <= gapStart+1) return { type: 'ring', id: 'inner-ring' };
-    }
-    if (cfg.rings >= 3 && cfg.innerRing2Thickness > 0) {
-      const inset2 = cfg.outerRingThickness+cfg.ringGap+cfg.innerRingThickness+cfg.ringGap;
-      if (r >= outerR-inset2-1 && r <= outerR-inset2+cfg.innerRing2Thickness+1) return { type: 'ring', id: 'center-ring' };
-    }
-  } else if (cfg.shape === 'oval') {
-    const r = Math.hypot(relDx, relDy/(sz.h/sz.w));
-    const outerR = sz.w/2;
-    const outerInner = Math.max(0, outerR-cfg.outerRingThickness);
-    if (r >= outerInner-1 && r <= outerR+2) return { type: 'ring', id: 'outer-ring' };
-    if (cfg.rings >= 2 && cfg.innerRingThickness > 0) {
-      const gapStart = outerInner - cfg.ringGap;
-      if (r >= Math.max(0,gapStart-cfg.innerRingThickness)-1 && r <= gapStart+1) return { type: 'ring', id: 'inner-ring' };
-    }
-  } else if (cfg.shape === 'rectangle') {
-    const hw=sz.w/2, hh=sz.h/2, absDx=Math.abs(relDx), absDy=Math.abs(relDy);
-    const innerW=Math.max(0,hw-cfg.outerRingThickness-cfg.ringGap*(cfg.rings>1?1:0));
-    const innerH=Math.max(0,hh-cfg.outerRingThickness-cfg.ringGap*(cfg.rings>1?1:0));
-    if ((absDx>=innerW&&absDx<=hw+1&&absDy<=hh+1)||(absDy>=innerH&&absDy<=hh+1&&absDx<=hw+1))
-      return { type: 'ring', id: 'outer-ring' };
+  // Selection indicator
+  if (currentElement && currentElement.startsWith('ring-') || selRing) {
+    ctx.save(); ctx.strokeStyle = 'rgba(79,140,255,0.4)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.strokeRect(cx - stampW/2 - 10, cy - stampH/2 - 10, stampW + 20, stampH + 20);
+    ctx.restore();
   }
-
-  // Check layers (top to bottom)
-  for (let i = cfg.layers.length-1; i >= 0; i--) {
-    const layer = cfg.layers[i];
-    if (!layer.visible) continue;
-
-    if (layer.type === 'shape') {
-      const tx = mmPx(layer.offsetXmm), ty = mmPx(layer.offsetYmm);
-      if (Math.hypot(mmCoords.dxMm-tx, mmCoords.dyMm-ty) < layer.shapeSizeMm+3)
-        return { type: 'layer', id: layer.id };
-    } else if (layer.type === 'image') {
-      const tx = mmPx(layer.offsetXmm), ty = mmPx(layer.offsetYmm);
-      const hw = layer.imageWidthMm/2+3, hh = layer.imageHeightMm/2+3;
-      if (Math.abs(mmCoords.dxMm-tx) < hw && Math.abs(mmCoords.dyMm-ty) < hh)
-        return { type: 'layer', id: layer.id };
-    } else if (layer.mode === 'straight') {
-      const tx = mmPx(layer.offsetXmm), ty = mmPx(layer.offsetYmm);
-      ctx.font = `${safeWeight(layer.font,layer.weight)} ${mmPx(layer.sizeMm)}px "${layer.font}"`;
-      const tw = ctx.measureText(layer.text).width / (DPI_CURRENT/25.4);
-      const th = layer.sizeMm;
-      if (Math.abs(mmCoords.dxMm-tx) < tw/2+3 && Math.abs(mmCoords.dyMm-ty) < th/2+3)
-        return { type: 'layer', id: layer.id };
-    } else {
-      // Curved text
-      const sz4 = stampSize();
-      const hitRx = sz4.w/2, hitRy = sz4.h/2;
-      const rMouse = Math.hypot(mmCoords.dxMm/hitRx, mmCoords.dyMm/hitRy)*hitRx;
-      if (Math.abs(rMouse - layer.radiusMm) < 3) {
-        let angle = Math.atan2(mmCoords.dyMm/hitRy, mmCoords.dxMm/hitRx)/DEG;
-        if (angle < 0) angle += 360;
-        let sAng = layer.startAngle%360; if(sAng<0)sAng+=360;
-        let eAng = layer.endAngle%360; if(eAng<0)eAng+=360;
-        let isInside = sAng<=eAng ? (angle>=sAng&&angle<=eAng) : (angle>=sAng||angle<=eAng);
-        if (isInside) return { type: 'layer', id: layer.id };
-      }
-    }
-  }
-
-  return null;
 }
 
-/* ── Hit Test for Drag Handles ─────────────────────────────────── */
-function hitTestHandles(mmCoords) {
-  if (!selShape && selLayer()) {
-    const l = selLayer();
-    const cx = canvas.width/2, cy = canvas.height/2;
-    if (l.mode === 'curved') {
-      const theta1=l.startAngle*DEG, theta2=l.endAngle*DEG;
-      const thetaM=(l.startAngle+(l.endAngle-l.startAngle)/2)*DEG;
-      const _he=textEllipseMm(l);
-      const hRxPx=mmPx(_he.rx), hRyPx=mmPx(_he.ry);
-      const hStart={x:cx+Math.cos(theta1)*hRxPx, y:cy+Math.sin(theta1)*hRyPx};
-      const hEnd={x:cx+Math.cos(theta2)*hRxPx, y:cy+Math.sin(theta2)*hRyPx};
-      const hRad={x:cx+Math.cos(thetaM)*hRxPx, y:cy+Math.sin(thetaM)*hRyPx};
-      const dist=(p1,p2)=>Math.hypot(p1.x-p2.x,p1.y-p2.y);
-      const cc = getCanvasCoords(mmCoords.dxMm*(DPI_CURRENT/25.4)+cx, mmCoords.dyMm*(DPI_CURRENT/25.4)+cy);
-      if (dist(cc,hStart)<12) return {type:'handle',role:'start',layerId:l.id};
-      if (dist(cc,hEnd)<12) return {type:'handle',role:'end',layerId:l.id};
-      if (dist(cc,hRad)<12) return {type:'handle',role:'radius',layerId:l.id};
-    } else if (l.mode === 'straight') {
-      const tx=cx+mmPx(l.offsetXmm), ty=cy+mmPx(l.offsetYmm);
-      const cc = getCanvasCoords(mmCoords.dxMm*(DPI_CURRENT/25.4)+cx, mmCoords.dyMm*(DPI_CURRENT/25.4)+cy);
-      if (Math.hypot(cc.x-tx,cc.y-ty)<12) return {type:'handle',role:'translate',layerId:l.id};
-    }
-  }
-  return null;
-}
+const renderD = debounce(render, 30);
 
-/* ── Select Element ────────────────────────────────────────────── */
-function selectElement(element) {
-  // element: { type: 'ring'|'layer', id: string }
-  if (!element) {
-    selShape = false; selRing = null; selId = null; selectedIds = new Set();
-    currentElement = null;
-  } else if (element.type === 'ring') {
-    selShape = true; selRing = element.id.replace('-ring',''); selId = null; selectedIds = new Set();
-    currentElement = element.id;
-  } else if (element.type === 'layer') {
-    selShape = false; selRing = null;
-    selId = element.id; selectedIds = new Set([element.id]);
-    currentElement = element.id;
-  }
-  updateLeftPanel();
-  updateRightPanel();
-  render();
-}
-
-/* ── Pointer Events ────────────────────────────────────────────── */
+/* ═══ POINTER EVENTS ═══ */
 function bindPointerEvents() {
-  viewport.addEventListener('pointerdown', e => {
-    if (e.target.closest('.panel') || e.target.closest('.topbar')) return;
-    isDragging = true;
-    viewport.setPointerCapture(e.pointerId);
+  canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+    const stampW = mmPx(stampSize().w), stampH = mmPx(stampSize().h);
+    const cx = canvas.width/2 + mmPx(cfg.shapeOffsetXmm || 0);
+    const cy = canvas.height/2 + mmPx(cfg.shapeOffsetYmm || 0);
 
-    const coords = getCanvasCoords(e.clientX, e.clientY);
-    const mm = canvasToMm(coords.x, coords.y);
+    // Check if clicking near ring area
+    const dx = (mx - cx) / (stampW/2);
+    const dy = (my - cy) / (stampH/2);
+    const dist = Math.sqrt(dx*dx + dy*dy);
 
-    // Check handles first
-    const handle = hitTestHandles(mm);
-    if (handle) {
-      dragHandle = handle;
-      viewport.classList.add('grabbing');
+    if (dist > 0.7 && dist < 1.15) {
+      // Ring area clicked
+      const outerR = 1.0;
+      const innerR = 1.0 - (cfg.outerRingThickness + cfg.ringGap) / Math.min(stampW, stampH) * 2;
+      if (dist > outerR - 0.1) {
+        selectElement({ type: 'ring', id: 'outer-ring' });
+      } else if (dist < innerR + 0.1 && cfg.rings >= 2) {
+        selectElement({ type: 'ring', id: 'inner-ring' });
+      }
       return;
     }
 
-    // Hit test for new selection
-    const hit = hitTest(mm);
-    if (hit) {
-      selectElement(hit);
-      dragHit = hit;
-      viewport.classList.add('grabbing');
-    } else {
-      selectElement(null);
-      // Start panning
-      panStart = { x: e.clientX - cfg.editorPanX, y: e.clientY - cfg.editorPanY };
-      isPanning = true;
-      viewport.classList.add('panning');
-    }
-  });
-
-  viewport.addEventListener('pointermove', e => {
-    const coords = getCanvasCoords(e.clientX, e.clientY);
-    const mm = canvasToMm(coords.x, coords.y);
-
-    if (isDragging) {
-      // Handle dragging
-      if (dragHandle) {
-        handleDrag(mm);
-        renderD();
-        return;
-      }
-      // Element dragging
-      if (dragHit && dragHit.type === 'layer') {
-        handleLayerDrag(mm, dragHit.id);
-        renderD();
-        return;
-      }
-      // Shape handle drag
-      if (dragHit && dragHit.type === 'ring') {
-        handleRingDrag(mm, dragHit.id);
-        renderD();
-        return;
-      }
-      // Panning
-      if (isPanning) {
-        cfg.editorPanX = e.clientX - panStart.x;
-        cfg.editorPanY = e.clientY - panStart.y;
-        updateTransform();
-        return;
-      }
-    }
-
-    // HOVER: Show what would be selected (no click needed)
-    if (!isDragging) {
-      const hit = hitTest(mm);
-      const newHovered = hit && hit.type === 'layer' ? cfg.layers.find(l => l.id === hit.id) : null;
-      if (newHovered !== hoveredLayer) {
-        hoveredLayer = newHovered;
-        render();
-      }
-      // Update cursor
-      if (hit) {
-        viewport.style.cursor = 'pointer';
+    // Check layers
+    let found = false;
+    cfg.layers.forEach(layer => {
+      const lcx = cx + mmPx(layer.offsetXmm);
+      const lcy = cy + mmPx(layer.offsetYmm);
+      if (layer.mode === 'straight') {
+        const dist = Math.hypot(mx - lcx, my - lcy);
+        if (dist < mmPx(layer.sizeMm) * 2) {
+          selectElement({ type: 'layer', id: layer.id });
+          found = true;
+        }
       } else {
-        viewport.style.cursor = 'default';
+        const dist = Math.hypot(mx - lcx, my - lcy);
+        if (dist < mmPx(layer.radiusMm)) {
+          selectElement({ type: 'layer', id: layer.id });
+          found = true;
+        }
       }
-    }
-  });
+    });
 
-  viewport.addEventListener('pointerup', e => {
-    if (isDragging && (dragHandle || dragHit)) pushHistory();
-    isDragging = false;
-    dragHandle = null;
-    dragHit = null;
-    isPanning = false;
-    viewport.classList.remove('grabbing', 'panning');
-  });
-
-  viewport.addEventListener('pointerleave', () => {
-    if (!isDragging && hoveredLayer) { hoveredLayer = null; render(); }
-  });
-
-  // Wheel zoom
-  viewport.addEventListener('wheel', e => {
-    e.preventDefault();
-    if (selShape && selRing) {
-      const step = e.deltaY < 0 ? 0.1 : -0.1;
-      if (selRing === 'outer') cfg.outerRingThickness = Math.max(0.1, Math.round((cfg.outerRingThickness+step)*10)/10);
-      else if (selRing === 'inner') cfg.innerRingThickness = Math.max(0, Math.round((cfg.innerRingThickness+step)*10)/10);
-      else if (selRing === 'center') cfg.innerRing2Thickness = Math.max(0, Math.round((cfg.innerRing2Thickness+step)*10)/10);
-      renderD(); autoHist(); return;
-    }
-    const l = selLayer();
-    if (l && (l.mode === 'curved' || l.mode === 'straight')) {
-      const step = e.deltaY < 0 ? 0.1 : -0.1;
-      l.sizeMm = Math.max(1, Math.round((l.sizeMm+step)*10)/10);
-      renderD(); autoHist(); return;
-    }
-    setZoom(cfg.editorZoom * (e.deltaY < 0 ? 1.1 : 1/1.1));
-  }, { passive: false });
-
-  // Keyboard
-  document.addEventListener('keydown', e => {
-    if (e.target.matches('input,textarea,select')) return;
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key === 'z') { e.preventDefault(); undo(); return; }
-    if ((mod && e.key === 'y') || (mod && e.shiftKey && e.key === 'Z')) { e.preventDefault(); redo(); return; }
-    if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveState(); showToast('Saved'); return; }
-    if (e.key === 'f' && !mod) { e.preventDefault(); fitView(); return; }
-    if (e.key === '+' || e.key === '=') { e.preventDefault(); setZoom(cfg.editorZoom*1.2); }
-    if (e.key === '-' || e.key === '_') { e.preventDefault(); setZoom(cfg.editorZoom/1.2); }
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (selId && cfg.layers.length > 1) {
-        e.preventDefault();
-        const idx = cfg.layers.findIndex(l => l.id === selId);
-        if (idx !== -1) { cfg.layers.splice(idx, 1); selId = cfg.layers[0].id; selectedIds = new Set([selId]); autoHist(); selectElement({type:'layer',id:selId}); showToast('Deleted'); }
-      }
+    if (!found) {
+      selectElement(null);
     }
   });
 }
 
-let dragHandle = null;
-let dragHit = null;
-let panStart = {x:0,y:0};
-let isPanning = false;
-
-function handleDrag(mm) {
-  const l = selLayer();
-  if (!l) return;
-  if (dragHandle.role === 'start') l.startAngle = Math.round(Math.atan2(mm.dyMm, mm.dxMm)/DEG);
-  else if (dragHandle.role === 'end') l.endAngle = Math.round(Math.atan2(mm.dyMm, mm.dxMm)/DEG);
-  else if (dragHandle.role === 'radius') l.radiusMm = Math.round(Math.hypot(mm.dxMm, mm.dyMm)*10)/10;
-  else if (dragHandle.role === 'translate') { l.offsetXmm = Math.round(mm.dxMm*10)/10; l.offsetYmm = Math.round(mm.dyMm*10)/10; }
-}
-
-function handleLayerDrag(mm, layerId) {
-  const l = cfg.layers.find(x => x.id === layerId);
-  if (!l) return;
-  if (l.mode === 'straight') { l.offsetXmm = Math.round(mm.dxMm*10)/10; l.offsetYmm = Math.round(mm.dyMm*10)/10; }
-  else if (l.mode === 'curved') {
-    const angle = Math.atan2(mm.dyMm, mm.dxMm)/DEG;
-    if (angle < 0) angle += 360;
-    // Simple: move layer to new position
-    l.offsetXmm = Math.round(mm.dxMm*10)/10;
-    l.offsetYmm = Math.round(mm.dyMm*10)/10;
+/* ═══ SELECTION ═══ */
+function selectElement(el) {
+  if (!el) {
+    currentElement = null;
+    selShape = false;
+    selRing = null;
+    selId = null;
+    selectedIds.clear();
+  } else if (el.type === 'ring') {
+    currentElement = el.id;
+    selRing = el.id.replace('-ring', '');
+    selShape = true;
+    selId = null;
+    selectedIds.clear();
+  } else if (el.type === 'layer') {
+    selId = el.id;
+    selectedIds = new Set([el.id]);
+    currentElement = el.id;
+    selShape = false;
+    selRing = null;
   }
+  updateLeftPanel();
+  updateFloatingPanel();
+  render();
 }
 
-function handleRingDrag(mm, ringId) {
-  const r = Math.hypot(mm.dxMm, mm.dyMm/getShapeAspect())*2;
-  if (ringId === 'outer-ring') cfg.outerRingThickness = Math.max(0.3, Math.min(8, Math.abs(mm.dxMm)));
-  else if (ringId === 'inner-ring') cfg.innerRingThickness = Math.max(0, Math.min(5, Math.abs(mm.dxMm)));
-  else if (ringId === 'center-ring') cfg.innerRing2Thickness = Math.max(0, Math.min(5, Math.abs(mm.dxMm)));
-}
-
-/* ================================================================
-   LEFT PANEL
-   ================================================================ */
+/* ═══ LEFT PANEL ═══ */
 function updateLeftPanel() {
-  // Highlight selected element in left panel
   document.querySelectorAll('.lp-element').forEach(el => {
     const isSelected = currentElement === el.dataset.element;
     el.classList.toggle('selected', isSelected);
   });
 
-  // Update ring values
   const outerRing = document.getElementById('valOuterRing');
   const innerRing = document.getElementById('valInnerRing');
   const centerRing = document.getElementById('valCenterRing');
@@ -838,11 +588,9 @@ function updateLeftPanel() {
   if (innerRing) innerRing.textContent = cfg.innerRingThickness || '0';
   if (centerRing) centerRing.textContent = cfg.innerRing2Thickness || '0';
 
-  // Show/hide center ring based on template
   const centerRingEl = document.querySelector('[data-element="center-ring"]');
   if (centerRingEl) centerRingEl.style.display = cfg.rings >= 3 ? '' : 'none';
 
-  // Stamp size
   const stampSz = document.getElementById('valStampSize');
   const stampOff = document.getElementById('valStampOffset');
   if (stampSz) stampSz.textContent = `${cfg.width}×${cfg.height}`;
@@ -910,53 +658,50 @@ function bindLeftPanelElements(container) {
   });
 }
 
-/* ── Left Panel: Ring + Stamp clicks ──────────────────────────── */
 function bindLeftPanelStatic() {
-  // Rings
   ['outer-ring','inner-ring','center-ring'].forEach(ringId => {
     const el = document.querySelector(`[data-element="${ringId}"]`);
     if (el) el.addEventListener('click', () => selectElement({ type: 'ring', id: ringId }));
   });
 
-  // Arcs
   ['arc-top','arc-bottom'].forEach(arcId => {
     const el = document.querySelector(`[data-element="${arcId}"]`);
     if (el) el.addEventListener('click', () => {
-      // Arc-top selects the first curved text with !flip
-      // Arc-bottom selects the first curved text with flip
       const isBottom = arcId === 'arc-bottom';
       const layer = cfg.layers.find(l => l.mode === 'curved' && l.flip === isBottom);
       if (layer) selectElement({ type: 'layer', id: layer.id });
     });
   });
 
-  // Stamp elements
   const stampSize = document.querySelector('[data-element="stamp-size"]');
-  if (stampSize) stampSize.addEventListener('click', () => { selShape=true; selRing='outer'; currentElement=null; updateLeftPanel(); updateRightPanel(); render(); });
+  if (stampSize) stampSize.addEventListener('click', () => { selShape=true; selRing='outer'; currentElement=null; updateLeftPanel(); updateFloatingPanel(); render(); });
 }
 
-/* ================================================================
-   RIGHT PANEL (Floating Properties)
-   ================================================================ */
-function updateRightPanel() {
-  const body = document.getElementById('rpBody');
-  const header = document.getElementById('rpHeader');
+/* ═══ FLOATING PROPERTIES PANEL ═══ */
+function updateFloatingPanel() {
+  const panel = document.getElementById('floatingPanel');
+  const body = document.getElementById('fpBody');
+  const header = document.getElementById('fpHeader').querySelector('span');
   const l = selLayer();
 
   if (selShape && selRing) {
-    header.textContent = selRing.charAt(0).toUpperCase() + selRing.slice(1) + ' Ring';
+    const ringLabel = selRing.charAt(0).toUpperCase() + selRing.slice(1);
+    header.textContent = ringLabel + ' Ring';
     body.innerHTML = buildRingPropsHTML(selRing);
     bindRingProps(selRing);
+    panel.classList.add('open');
     return;
   }
 
   if (!l) {
     header.textContent = 'Properties';
-    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Hover over an element to select it</div></div>';
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to select it</div></div>';
+    panel.classList.remove('open');
     return;
   }
 
   header.textContent = l.name || 'Layer';
+  panel.classList.add('open');
 
   if (l.type === 'shape') {
     body.innerHTML = buildShapePropsHTML(l);
@@ -970,40 +715,49 @@ function updateRightPanel() {
     return;
   }
 
-  // Text layer
   body.innerHTML = buildTextPropsHTML(l);
   bindLayerProps();
 }
 
+/* ── Ring Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
 function buildRingPropsHTML(ring) {
   const isCenter = ring === 'center';
   const thickness = isCenter ? cfg.innerRing2Thickness : (ring === 'outer' ? cfg.outerRingThickness : cfg.innerRingThickness);
   const thicknessKey = isCenter ? 'innerRing2Thickness' : (ring === 'outer' ? 'outerRingThickness' : 'innerRingThickness');
+  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${cfg[key]}" data-ring-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${cfg[key]}" data-ring-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
+
   return `
     <div class="prop-group">
-      <label class="prop-label">${ring.charAt(0).toUpperCase()+ring.slice(1)} Thickness</label>
+      <label class="prop-label">Thickness (Size)</label>
       <div class="slider-pair">
         <input type="range" min="0.1" max="8" step="0.1" value="${thickness}" data-ring-prop="${thicknessKey}">
         <input type="number" min="0.1" max="8" step="0.1" value="${thickness}" data-ring-prop="${thicknessKey}">
       </div>
     </div>
     <div class="prop-group">
-      <label class="prop-label">Stamp Width</label>
+      <label class="prop-label">Width (mm)</label>
       <div class="slider-pair">
-        <input type="range" min="15" max="120" step="0.5" value="${cfg.width}" data-ring-prop="width">
-        <input type="number" min="15" max="120" step="0.5" value="${cfg.width}" data-ring-prop="width">
+        <input type="range" min="15" max="254" step="0.5" value="${cfg.width}" data-ring-prop="width">
+        <input type="number" min="15" max="254" step="0.5" value="${cfg.width}" data-ring-prop="width">
       </div>
     </div>
     <div class="prop-group">
-      <label class="prop-label">Stamp Height</label>
+      <label class="prop-label">Height (mm)</label>
       <div class="slider-pair">
-        <input type="range" min="10" max="90" step="0.5" value="${cfg.height}" data-ring-prop="height">
-        <input type="number" min="10" max="90" step="0.5" value="${cfg.height}" data-ring-prop="height">
+        <input type="range" min="10" max="254" step="0.5" value="${cfg.height}" data-ring-prop="height">
+        <input type="number" min="10" max="254" step="0.5" value="${cfg.height}" data-ring-prop="height">
+      </div>
+    </div>
+    <div class="prop-group">
+      <label class="prop-label">Curve / Arc</label>
+      <div class="slider-pair">
+        <input type="range" min="0" max="360" step="1" value="${cfg.cornerRadius * 10}" data-ring-prop="cornerCurve">
+        <input type="number" min="0" max="360" step="1" value="${cfg.cornerRadius * 10}" data-ring-prop="cornerCurve">
       </div>
     </div>
     ${cfg.rings >= 2 && !isCenter ? `
     <div class="prop-group">
-      <label class="prop-label">Ring Gap</label>
+      <label class="prop-label">Ring Gap (mm)</label>
       <div class="slider-pair">
         <input type="range" min="0" max="10" step="0.1" value="${cfg.ringGap}" data-ring-prop="ringGap">
         <input type="number" min="0" max="10" step="0.1" value="${cfg.ringGap}" data-ring-prop="ringGap">
@@ -1012,44 +766,51 @@ function buildRingPropsHTML(ring) {
   `;
 }
 
+/* ── Text Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
 function buildTextPropsHTML(l) {
   const weightOpts = (FONT_WEIGHTS[l.font]||[400,700,900]).map(w => {
     const names = {300:'Light',400:'Regular',500:'Medium',600:'Semi Bold',700:'Bold',800:'Extra Bold',900:'Black'};
     return `<option value="${w}"${l.weight===w?' selected':''}>${names[w]||w}</option>`;
   }).join('');
-  const slider = (key,min,max,step) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div></div>`;
+  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
 
   return `
     <div class="prop-group"><label class="prop-label">Text</label><textarea class="prop-input prop-input-textarea" data-prop="text" dir="auto">${l.text}</textarea></div>
     <div class="prop-group"><label class="prop-label">Font</label><div class="prop-row"><select class="prop-select" data-prop="font">${fontOptHTML(l.font)}</select><select class="prop-select" style="max-width:70px" data-prop="weight">${weightOpts}</select></div></div>
     <div class="prop-group"><label class="prop-label">Mode</label><select class="prop-select" data-prop="mode"><option value="curved"${l.mode==='curved'?' selected':''}>Curved</option><option value="straight"${l.mode==='straight'?' selected':''}>Straight</option></select></div>
-    <div class="prop-group"><label class="prop-label">Size</label>${slider('sizeMm',1,18,0.1)}</div>
+    <div class="prop-group"><label class="prop-label">Size</label>${slider('sizeMm',1,18,0.1,'mm')}</div>
     ${l.mode==='curved' ? `
-    <div class="prop-group"><label class="prop-label">Arc</label>${slider('radiusMm',3,42,0.1)}${slider('startAngle',0,360,1)}${slider('endAngle',0,360,1)}
+    <div class="prop-group"><label class="prop-label">Curve / Arc</label>${slider('radiusMm',3,42,0.1,'mm')}${slider('startAngle',0,360,1,'°')}${slider('endAngle',0,360,1,'°')}
     <div class="toggle-row"><div class="toggle${l.flip?' on':''}" data-prop="flip"></div><span class="toggle-label">Flip</span></div></div>
-    ` : `<div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-50,50,0.1)}${slider('offsetYmm',-50,50,0.1)}</div>`}
-    <div class="prop-group"><label class="prop-label">Style</label>${slider('letterSpacing',-4,20,0.5)}${slider('wordSpacing',-4,30,0.5)}${slider('scaleX',0.3,3,0.05)}${slider('scaleY',0.3,3,0.05)}</div>
+    ` : `<div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-50,50,0.1,'x')}${slider('offsetYmm',-50,50,0.1,'y')}</div>`}
+    <div class="prop-group"><label class="prop-label">Letter Spacing</label>${slider('letterSpacing',-4,20,0.5,'px')}</div>
+    <div class="prop-group"><label class="prop-label">Word Gap</label>${slider('wordSpacing',-4,30,0.5,'px')}</div>
+    <div class="prop-group"><label class="prop-label">Width Scale</label>${slider('scaleX',0.3,3,0.05,'x')}</div>
+    <div class="prop-group"><label class="prop-label">Height Scale</label>${slider('scaleY',0.3,3,0.05,'x')}</div>
   `;
 }
 
+/* ── Shape Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
 function buildShapePropsHTML(l) {
   const shapeOpts = ['star','pentagon','hexagon','diamond','cross','circle'].map(s => `<option value="${s}"${l.shapeType===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
-  const slider = (key,min,max,step) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div></div>`;
+  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
+
   return `
     <div class="prop-group"><label class="prop-label">Shape</label><select class="prop-select" data-prop="shapeType">${shapeOpts}</select></div>
-    <div class="prop-group"><label class="prop-label">Size</label>${slider('shapeSizeMm',1,20,0.5)}</div>
-    <div class="prop-group"><label class="prop-label">Rotation</label>${slider('shapeRotation',0,360,1)}</div>
-    <div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-30,30,0.1)}${slider('offsetYmm',-30,30,0.1)}</div>
+    <div class="prop-group"><label class="prop-label">Size</label>${slider('shapeSizeMm',1,20,0.5,'mm')}</div>
+    <div class="prop-group"><label class="prop-label">Rotation</label>${slider('shapeRotation',0,360,1,'°')}</div>
+    <div class="prop-group"><label class="prop-label">Position X</label>${slider('offsetXmm',-30,30,0.1,'mm')}</div>
+    <div class="prop-group"><label class="prop-label">Position Y</label>${slider('offsetYmm',-30,30,0.1,'mm')}</div>
     <div class="toggle-row"><div class="toggle${l.shapeFill?' on':''}" data-prop="shapeFill"></div><span class="toggle-label">Filled</span></div>
   `;
 }
 
 function buildImagePropsHTML(l) {
-  const slider = (key,min,max,step) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"></div></div>`;
+  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
   return `
-    <div class="prop-group"><label class="prop-label">Width</label>${slider('imageWidthMm',1,30,0.5)}</div>
-    <div class="prop-group"><label class="prop-label">Height</label>${slider('imageHeightMm',1,30,0.5)}</div>
-    <div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-30,30,0.1)}${slider('offsetYmm',-30,30,0.1)}</div>
+    <div class="prop-group"><label class="prop-label">Width</label>${slider('imageWidthMm',1,30,0.5,'mm')}</div>
+    <div class="prop-group"><label class="prop-label">Height</label>${slider('imageHeightMm',1,30,0.5,'mm')}</div>
+    <div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-30,30,0.1,'x')}${slider('offsetYmm',-30,30,0.1,'y')}</div>
   `;
 }
 
@@ -1060,8 +821,12 @@ function bindRingProps(ring) {
     input.dataset.bound = '1';
     const key = input.dataset.ringProp;
     input.addEventListener('input', () => {
-      const v = parseFloat(input.value)||0;
-      cfg[key] = v;
+      let v = parseFloat(input.value)||0;
+      if (key === 'cornerCurve') {
+        cfg.cornerRadius = v / 10;
+      } else {
+        cfg[key] = v;
+      }
       document.querySelectorAll(`[data-ring-prop="${key}"]`).forEach(x => { if(x!==input) x.value=v; });
       renderD();
     });
@@ -1091,7 +856,7 @@ function bindLayerProps() {
       let v = input.value;
       if (isRange || isNumber) v = parseFloat(v)||0;
       const l = selLayer();
-      if (l) { l[key] = v; if (key==='text') l.name=v; if (key==='font'||key==='mode') updateRightPanel(); }
+      if (l) { l[key] = v; if (key==='text') l.name=v; if (key==='font'||key==='mode') updateFloatingPanel(); }
       if (isRange||isNumber) document.querySelectorAll(`[data-prop="${key}"]`).forEach(x => { if(x!==input) x.value=v; });
       renderD();
       if (!isRange && !isNumber) autoHist();
@@ -1099,9 +864,7 @@ function bindLayerProps() {
   });
 }
 
-/* ================================================================
-   COLOR PALETTE (Always Visible)
-   ================================================================ */
+/* ═══ COLOR PALETTE ═══ */
 function buildColorPalette() {
   const row = document.getElementById('swatchRow');
   row.innerHTML = SWATCHES.map(c =>
@@ -1125,7 +888,6 @@ function buildColorPalette() {
     if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { cfg.inkColor = hex.value; picker.value = hex.value; renderD(); }
   });
 
-  // Set initial active swatch
   row.querySelectorAll('.color-swatch').forEach(s => {
     if (s.dataset.color.toLowerCase() === cfg.inkColor.toLowerCase()) s.classList.add('active');
   });
@@ -1154,13 +916,11 @@ function applyTemplate(name) {
   DPI_CURRENT = cfg.dpi || 300;
   selId = cfg.layers[0].id; selectedIds = new Set([selId]); selShape = false; selRing = null;
   currentElement = null;
-  updateLeftPanel(); updateRightPanel(); updateTemplateCards(); render(); pushHistory();
+  updateLeftPanel(); updateFloatingPanel(); updateTemplateCards(); render(); pushHistory();
   showToast(TEMPLATES[name].label + ' applied');
 }
 
-/* ================================================================
-   EXPORT
-   ================================================================ */
+/* ═══ EXPORT ═══ */
 function download(url, filename, revoke) {
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -1254,10 +1014,8 @@ ${texts}
   showToast('SVG exported');
 }
 
-/* ================================================================
-   SYNC + INIT
-   ================================================================ */
-function syncAll() { DPI_CURRENT = cfg.dpi || 300; updateLeftPanel(); updateRightPanel(); updateTemplateCards(); }
+/* ═══ SYNC + INIT ═══ */
+function syncAll() { DPI_CURRENT = cfg.dpi || 300; updateLeftPanel(); updateFloatingPanel(); updateTemplateCards(); }
 
 function init() {
   const loaded = loadState();
@@ -1267,6 +1025,8 @@ function init() {
   bindLeftPanelStatic();
   bindPointerEvents();
   bindTitleAndPresets();
+  initSidebarToggle();
+  initFloatingPanel();
 
   // Top bar
   document.getElementById('undoBtn').addEventListener('click', undo);
@@ -1292,16 +1052,23 @@ function init() {
         if(img.width>img.height) h=maxMm*(img.height/img.width); else w=maxMm*(img.width/img.height);
         const l = makeLayer({type:'image',name:'Image',imageData:ev.target.result,imageWidthMm:Math.round(w*10)/10,imageHeightMm:Math.round(h*10)/10});
         cfg.layers.push(l); selId=l.id; selectedIds=new Set([selId]);
-        autoHist(); updateLeftPanel(); updateRightPanel(); render(); showToast('Image imported');
+        autoHist(); updateLeftPanel(); updateFloatingPanel(); render(); showToast('Image imported');
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file); e.target.value='';
   });
 
+  // Window resize
+  window.addEventListener('resize', () => { updateCanvasCSS(); });
+
   if (loaded) { syncAll(); render(); updateTransform(); pushHistory(); }
   else { syncAll(); render(); updateTransform(); }
   document.fonts.ready.then(() => render());
+}
+
+function updateTransform() {
+  // Placeholder for any transform updates
 }
 
 /* ── Title + Presets ───────────────────────────────────────────── */
@@ -1314,20 +1081,16 @@ function bindTitleAndPresets() {
   const modalBody = document.getElementById('presetModalBody');
   const modalClose = document.getElementById('presetModalClose');
 
-  // Load saved title
   const savedTitle = localStorage.getItem('stampstudio_title');
   if (savedTitle) nameInput.value = savedTitle;
 
-  // Save title on change
   nameInput.addEventListener('input', () => {
     localStorage.setItem('stampstudio_title', nameInput.value);
   });
 
-  // Close modal
   modalClose.addEventListener('click', () => modal.classList.remove('show'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
 
-  // Save Preset
   savePresetBtn.addEventListener('click', () => {
     modalTitle.textContent = 'Save Preset';
     modalBody.innerHTML = `
@@ -1349,7 +1112,6 @@ function bindTitleAndPresets() {
     });
   });
 
-  // Load Preset
   loadPresetBtn.addEventListener('click', () => {
     const presets = loadPresetsList();
     modalTitle.textContent = 'Load Preset';
@@ -1372,7 +1134,6 @@ function bindTitleAndPresets() {
           if (e.target.classList.contains('preset-del')) {
             e.stopPropagation();
             deletePreset(parseInt(e.target.dataset.del));
-            // Refresh modal
             loadPresetBtn.click();
             return;
           }

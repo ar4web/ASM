@@ -17,26 +17,24 @@
   <!-- ═══ TOP BAR ═══ -->
   <header class="topbar">
     <div class="tb-left">
+      <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
       <span class="brand">🖊️ Stamp Studio</span>
     </div>
     <div class="tb-center">
-      <!-- Editable Document Title -->
       <div class="doc-title" id="docTitle">
         <span class="doc-icon">📄</span>
         <input type="text" class="doc-name-input" id="docNameInput" value="Untitled Stamp" placeholder="Untitled" maxlength="40">
       </div>
-      <!-- Preset Save/Load -->
       <button class="preset-btn" id="savePresetBtn" title="Save current config as preset">
-        <span>💾</span> Save Preset
+        <span>💾</span> Save
       </button>
       <button class="preset-btn" id="loadPresetBtn" title="Load a saved preset">
-        <span>📂</span> Load Preset
+        <span>📂</span> Load
       </button>
-      <!-- Always-visible color palette -->
       <div class="color-palette">
         <div class="color-swatches" id="swatchRow"></div>
         <input type="color" id="inkColorPicker" value="#1e3a8a" title="Custom color">
-        <input type="text" id="inkHex" value="#1e3a8a" maxlength="7" title="Hex color">
+        <input type="text" class="hex-input" id="inkHex" value="#1e3a8a" maxlength="7" title="Hex color">
       </div>
     </div>
     <div class="tb-right">
@@ -65,7 +63,7 @@
   <main class="main">
 
     <!-- ═══ LEFT SIDEBAR: Element List ═══ -->
-    <aside class="left-panel">
+    <aside class="left-panel" id="leftPanel">
       <div class="lp-section">
         <div class="lp-section-title">Rings</div>
         <div class="lp-element" data-element="outer-ring">
@@ -127,7 +125,7 @@
       </div>
     </aside>
 
-    <!-- ═══ CENTER: Canvas ═══ -->
+    <!-- ═══ CENTER: Canvas (10x10 inch) ═══ -->
     <section class="workspace">
       <div class="canvas-area" id="viewport">
         <div class="canvas-wrap" id="stage">
@@ -145,16 +143,19 @@
       </div>
     </section>
 
-    <!-- ═══ RIGHT: Floating Properties Panel ═══ -->
-    <aside class="right-panel" id="rightPanel">
-      <div class="rp-header" id="rpHeader">Properties</div>
-      <div class="rp-body" id="rpBody">
+    <!-- ═══ FLOATING PROPERTIES PANEL ═══ -->
+    <div class="floating-panel" id="floatingPanel">
+      <div class="fp-header" id="fpHeader">
+        <span>Properties</span>
+        <button class="fp-close" id="fpClose" title="Close panel">×</button>
+      </div>
+      <div class="fp-body" id="fpBody">
         <div class="empty-state">
           <div class="empty-icon">👆</div>
-          <div class="empty-text">Hover over an element to select it</div>
+          <div class="empty-text">Click an element to select it</div>
         </div>
       </div>
-    </aside>
+    </div>
 
   </main>
 </div>
@@ -173,9 +174,7 @@
       <span id="presetModalTitle">Save Preset</span>
       <button class="modal-close" id="presetModalClose">&times;</button>
     </div>
-    <div class="modal-body" id="presetModalBody">
-      <!-- Dynamic content -->
-    </div>
+    <div class="modal-body" id="presetModalBody"></div>
   </div>
 </div>
 
