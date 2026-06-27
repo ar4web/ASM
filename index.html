@@ -62,7 +62,7 @@
   <!-- ═══ MAIN AREA ═══ -->
   <main class="main">
 
-    <!-- ═══ LEFT SIDEBAR: Element List ═══ -->
+    <!-- ═══ LEFT SIDEBAR ═══ -->
     <aside class="left-panel" id="leftPanel">
       <div class="lp-section">
         <div class="lp-section-title">Rings</div>
@@ -136,23 +136,22 @@
         </div>
       </div>
 
-      <!-- Template Picker -->
       <div class="template-bar">
         <span class="tpl-label">Template:</span>
         <div class="tpl-options" id="templateOptions"></div>
       </div>
     </section>
 
-    <!-- ═══ FLOATING PROPERTIES PANEL ═══ -->
+    <!-- ═══ FLOATING CONTROLLER ═══ -->
     <div class="floating-panel" id="floatingPanel">
       <div class="fp-header" id="fpHeader">
-        <span>Properties</span>
-        <button class="fp-close" id="fpClose" title="Close panel">×</button>
+        <span>⚙️ Controller</span>
+        <button class="fp-close" id="fpClose" title="Close">×</button>
       </div>
       <div class="fp-body" id="fpBody">
         <div class="empty-state">
           <div class="empty-icon">👆</div>
-          <div class="empty-text">Click an element to select it</div>
+          <div class="empty-text">Click an element to control it</div>
         </div>
       </div>
     </div>
@@ -160,14 +159,11 @@
   </main>
 </div>
 
-<!-- Hidden file inputs -->
 <input type="file" id="importFile" accept="image/*" style="display:none">
 <input type="file" id="loadConfigFile" accept=".json" style="display:none">
 
-<!-- Toast -->
 <div id="toast" class="toast"></div>
 
-<!-- Preset Modal -->
 <div class="modal-overlay" id="presetModal">
   <div class="modal">
     <div class="modal-header">

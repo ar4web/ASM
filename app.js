@@ -1,7 +1,7 @@
 "use strict";
 /* ================================================================
-   Stamp Studio — Full Rebuild
-   Sidebar toggle · Floating Controls · 10x10" Canvas · Ring Controls · Arabic fix
+   Stamp Studio — Smooth Controller + Animations
+   Unified floating controller · Smooth everything · Arabic fix
    ================================================================ */
 
 const CSS_DPI = 96, CSS_MM = CSS_DPI / 25.4, DEG = Math.PI / 180;
@@ -9,6 +9,7 @@ let DPI_CURRENT = 300;
 const mmPx = mm => mm * (DPI_CURRENT / 25.4);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const uid = () => 'L' + Math.random().toString(36).slice(2, 8);
+const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ── Undo / Redo ────────────────────────────────────────────────── */
 const HIST_MAX = 60;
@@ -48,7 +49,7 @@ function hexRgba(hex, opacity) {
 }
 
 /* ── Storage ───────────────────────────────────────────────────── */
-const STORAGE_KEY = 'stampstudio_v3';
+const STORAGE_KEY = 'stampstudio_v4';
 function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch (_) {} }
 
 function loadState() {
@@ -198,6 +199,82 @@ const viewport = document.getElementById('viewport');
 const stage = document.getElementById('stage');
 const zoomLabel = document.getElementById('zoomLabel');
 
+/* ═══ SMOOTH ZOOM (mouse wheel) ═══ */
+let targetZoom = 1;
+let currentZoom = 1;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let targetPan = { x: 0, y: 0 };
+let currentPan = { x: 0, y: 0 };
+
+function setupCanvas() {
+  const canvasSizePx = 10 * 300;
+  canvas.width = canvasSizePx;
+  canvas.height = canvasSizePx;
+  updateCanvasCSS();
+}
+
+function updateCanvasCSS() {
+  const vpW = viewport.clientWidth - 40;
+  const vpH = viewport.clientHeight - 40;
+  const baseSize = Math.min(vpW, vpH, 600);
+  const size = baseSize * currentZoom;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  canvas.style.transform = `translate(${currentPan.x}px, ${currentPan.y}px)`;
+  zoomLabel.textContent = Math.round(currentZoom * 100) + '%';
+}
+
+function smoothZoom(e) {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.08 : 0.08;
+  targetZoom = clamp(targetZoom + delta, 0.3, 4);
+  animateTransform();
+}
+
+function animateTransform() {
+  const ease = 0.15;
+  let animFrame;
+  function step() {
+    currentZoom = lerp(currentZoom, targetZoom, ease);
+    currentPan.x = lerp(currentPan.x, targetPan.x, ease);
+    currentPan.y = lerp(currentPan.y, targetPan.y, ease);
+    updateCanvasCSS();
+    if (Math.abs(currentZoom - targetZoom) > 0.001 || Math.abs(currentPan.x - targetPan.x) > 0.5 || Math.abs(currentPan.y - targetPan.y) > 0.5) {
+      animFrame = requestAnimationFrame(step);
+    }
+  }
+  cancelAnimationFrame(animFrame);
+  step();
+}
+
+function initZoomPan() {
+  viewport.addEventListener('wheel', smoothZoom, { passive: false });
+  viewport.addEventListener('mousedown', e => {
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      isPanning = true;
+      panStart = { x: e.clientX - targetPan.x, y: e.clientY - targetPan.y };
+      viewport.style.cursor = 'grabbing';
+    }
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    targetPan.x = e.clientX - panStart.x;
+    targetPan.y = e.clientY - panStart.y;
+    animateTransform();
+  });
+  document.addEventListener('mouseup', () => {
+    isPanning = false;
+    viewport.style.cursor = '';
+  });
+  // Double-click to reset
+  viewport.addEventListener('dblclick', () => {
+    targetZoom = 1;
+    targetPan = { x: 0, y: 0 };
+    animateTransform();
+  });
+}
+
 /* ═══ SIDEBAR TOGGLE ═══ */
 function initSidebarToggle() {
   const panel = document.getElementById('leftPanel');
@@ -208,7 +285,7 @@ function initSidebarToggle() {
   });
 }
 
-/* ═══ FLOATING PANEL DRAG ═══ */
+/* ═══ FLOATING PANEL DRAG (smooth) ═══ */
 function initFloatingPanel() {
   const panel = document.getElementById('floatingPanel');
   const header = document.getElementById('fpHeader');
@@ -244,24 +321,6 @@ function initFloatingPanel() {
     document.body.style.userSelect = '';
     panel.style.transition = '';
   });
-}
-
-/* ═══ 10x10 INCH CANVAS ═══ */
-function setupCanvas() {
-  // 10x10 inches at 300 DPI = 3000x3000px
-  const canvasSizePx = 10 * 300; // 3000px
-  canvas.width = canvasSizePx;
-  canvas.height = canvasSizePx;
-  // CSS size: fit within viewport while maintaining aspect ratio
-  updateCanvasCSS();
-}
-
-function updateCanvasCSS() {
-  const vpW = viewport.clientWidth - 40;
-  const vpH = viewport.clientHeight - 40;
-  const size = Math.min(vpW, vpH, 600);
-  canvas.style.width = size + 'px';
-  canvas.style.height = size + 'px';
 }
 
 /* ================================================================
@@ -342,7 +401,6 @@ function buildTextStrip(layer, color) {
   if ('letterSpacing' in sc) sc.letterSpacing = `${layer.letterSpacing}px`;
   if ('wordSpacing' in sc) sc.wordSpacing = `${layer.wordSpacing}px`;
   sc.fillStyle = color; sc.textAlign = 'center'; sc.textBaseline = 'middle';
-  // Arabic fix: set direction on context
   sc.direction = dir;
   sc.translate(sw/2, sh/2); sc.scale(sx, sy); sc.fillText(layer.text, 0, 0);
   return { canvas: strip, textWidth: textW, pad };
@@ -389,7 +447,6 @@ function drawStraightLayer(layer, cx, cy, color, rng) {
     if ('letterSpacing' in ctx) ctx.letterSpacing = `${layer.letterSpacing}px`;
     if ('wordSpacing' in ctx) ctx.wordSpacing = `${layer.wordSpacing}px`;
     ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    // Arabic fix: set text direction
     ctx.direction = layerDir(layer);
     const sx = layer.scaleX||1, sy = layer.scaleY||1;
     if (cfg.rotationJitter && cfg.jitterDegrees > 0) {
@@ -457,12 +514,9 @@ function render() {
   setupCanvas();
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-
-  // White background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Stamp dimensions in px (10x10 inch = 3000px at 300dpi)
   const stampW = mmPx(stampSize().w);
   const stampH = mmPx(stampSize().h);
   const cx = W/2 + mmPx(cfg.shapeOffsetXmm || 0);
@@ -471,10 +525,8 @@ function render() {
   const color = hexRgba(cfg.inkColor, cfg.opacity);
   const rng = mkRng(cfg.seed);
 
-  // Draw geometry (rings)
   drawGeometry(cx, cy, stampW, stampH, color);
 
-  // Draw layers
   cfg.layers.forEach(layer => {
     if (!layer.visible) return;
     if (layer.type === 'text' && layer.mode === 'curved') drawCurvedLayer(layer, cx, cy, color, rng);
@@ -482,13 +534,6 @@ function render() {
     else if (layer.type === 'shape') drawShapeLayer(layer, cx, cy, color, rng);
     else if (layer.type === 'image') drawImageLayer(layer, cx, cy);
   });
-
-  // Selection indicator
-  if (currentElement && currentElement.startsWith('ring-') || selRing) {
-    ctx.save(); ctx.strokeStyle = 'rgba(79,140,255,0.4)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-    ctx.strokeRect(cx - stampW/2 - 10, cy - stampH/2 - 10, stampW + 20, stampH + 20);
-    ctx.restore();
-  }
 }
 
 const renderD = debounce(render, 30);
@@ -505,69 +550,41 @@ function bindPointerEvents() {
     const cx = canvas.width/2 + mmPx(cfg.shapeOffsetXmm || 0);
     const cy = canvas.height/2 + mmPx(cfg.shapeOffsetYmm || 0);
 
-    // Check if clicking near ring area
     const dx = (mx - cx) / (stampW/2);
     const dy = (my - cy) / (stampH/2);
     const dist = Math.sqrt(dx*dx + dy*dy);
 
     if (dist > 0.7 && dist < 1.15) {
-      // Ring area clicked
-      const outerR = 1.0;
-      const innerR = 1.0 - (cfg.outerRingThickness + cfg.ringGap) / Math.min(stampW, stampH) * 2;
-      if (dist > outerR - 0.1) {
-        selectElement({ type: 'ring', id: 'outer-ring' });
-      } else if (dist < innerR + 0.1 && cfg.rings >= 2) {
-        selectElement({ type: 'ring', id: 'inner-ring' });
-      }
+      if (dist > 0.85) selectElement({ type: 'ring', id: 'outer-ring' });
+      else if (cfg.rings >= 2) selectElement({ type: 'ring', id: 'inner-ring' });
       return;
     }
 
-    // Check layers
     let found = false;
     cfg.layers.forEach(layer => {
       const lcx = cx + mmPx(layer.offsetXmm);
       const lcy = cy + mmPx(layer.offsetYmm);
       if (layer.mode === 'straight') {
         const dist = Math.hypot(mx - lcx, my - lcy);
-        if (dist < mmPx(layer.sizeMm) * 2) {
-          selectElement({ type: 'layer', id: layer.id });
-          found = true;
-        }
+        if (dist < mmPx(layer.sizeMm) * 2) { selectElement({ type: 'layer', id: layer.id }); found = true; }
       } else {
         const dist = Math.hypot(mx - lcx, my - lcy);
-        if (dist < mmPx(layer.radiusMm)) {
-          selectElement({ type: 'layer', id: layer.id });
-          found = true;
-        }
+        if (dist < mmPx(layer.radiusMm)) { selectElement({ type: 'layer', id: layer.id }); found = true; }
       }
     });
 
-    if (!found) {
-      selectElement(null);
-    }
+    if (!found) selectElement(null);
   });
 }
 
 /* ═══ SELECTION ═══ */
 function selectElement(el) {
   if (!el) {
-    currentElement = null;
-    selShape = false;
-    selRing = null;
-    selId = null;
-    selectedIds.clear();
+    currentElement = null; selShape = false; selRing = null; selId = null; selectedIds.clear();
   } else if (el.type === 'ring') {
-    currentElement = el.id;
-    selRing = el.id.replace('-ring', '');
-    selShape = true;
-    selId = null;
-    selectedIds.clear();
+    currentElement = el.id; selRing = el.id.replace('-ring', ''); selShape = true; selId = null; selectedIds.clear();
   } else if (el.type === 'layer') {
-    selId = el.id;
-    selectedIds = new Set([el.id]);
-    currentElement = el.id;
-    selShape = false;
-    selRing = null;
+    selId = el.id; selectedIds = new Set([el.id]); currentElement = el.id; selShape = false; selRing = null;
   }
   updateLeftPanel();
   updateFloatingPanel();
@@ -577,8 +594,7 @@ function selectElement(el) {
 /* ═══ LEFT PANEL ═══ */
 function updateLeftPanel() {
   document.querySelectorAll('.lp-element').forEach(el => {
-    const isSelected = currentElement === el.dataset.element;
-    el.classList.toggle('selected', isSelected);
+    el.classList.toggle('selected', currentElement === el.dataset.element);
   });
 
   const outerRing = document.getElementById('valOuterRing');
@@ -596,7 +612,6 @@ function updateLeftPanel() {
   if (stampSz) stampSz.textContent = `${cfg.width}×${cfg.height}`;
   if (stampOff) stampOff.textContent = `${cfg.shapeOffsetXmm||0}, ${cfg.shapeOffsetYmm||0}`;
 
-  // Build straight text list
   const straightList = document.getElementById('straightTextList');
   if (straightList) {
     const straightLayers = cfg.layers.filter(l => l.mode === 'straight' && l.type === 'text');
@@ -613,7 +628,6 @@ function updateLeftPanel() {
     bindLeftPanelElements(straightList);
   }
 
-  // Build shape list
   const shapeListEl = document.getElementById('shapeList');
   if (shapeListEl) {
     const shapeLayers = cfg.layers.filter(l => l.type === 'shape');
@@ -630,7 +644,6 @@ function updateLeftPanel() {
     bindLeftPanelElements(shapeListEl);
   }
 
-  // Build image list
   const imageListEl = document.getElementById('imageList');
   if (imageListEl) {
     const imageLayers = cfg.layers.filter(l => l.type === 'image');
@@ -652,9 +665,7 @@ function bindLeftPanelElements(container) {
   container.querySelectorAll('.lp-element').forEach(el => {
     if (el.dataset.bound) return;
     el.dataset.bound = '1';
-    el.addEventListener('click', () => {
-      selectElement({ type: 'layer', id: el.dataset.element });
-    });
+    el.addEventListener('click', () => selectElement({ type: 'layer', id: el.dataset.element }));
   });
 }
 
@@ -677,7 +688,7 @@ function bindLeftPanelStatic() {
   if (stampSize) stampSize.addEventListener('click', () => { selShape=true; selRing='outer'; currentElement=null; updateLeftPanel(); updateFloatingPanel(); render(); });
 }
 
-/* ═══ FLOATING PROPERTIES PANEL ═══ */
+/* ═══ FLOATING CONTROLLER ═══ */
 function updateFloatingPanel() {
   const panel = document.getElementById('floatingPanel');
   const body = document.getElementById('fpBody');
@@ -686,158 +697,217 @@ function updateFloatingPanel() {
 
   if (selShape && selRing) {
     const ringLabel = selRing.charAt(0).toUpperCase() + selRing.slice(1);
-    header.textContent = ringLabel + ' Ring';
-    body.innerHTML = buildRingPropsHTML(selRing);
-    bindRingProps(selRing);
+    header.textContent = `⚙️ ${ringLabel} Ring`;
+    body.innerHTML = buildRingController(selRing);
+    bindRingControls(selRing);
     panel.classList.add('open');
     return;
   }
 
   if (!l) {
-    header.textContent = 'Properties';
-    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to select it</div></div>';
+    header.textContent = '⚙️ Controller';
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to control it</div></div>';
     panel.classList.remove('open');
     return;
   }
 
-  header.textContent = l.name || 'Layer';
+  header.textContent = `⚙️ ${l.name || 'Layer'}`;
   panel.classList.add('open');
 
   if (l.type === 'shape') {
-    body.innerHTML = buildShapePropsHTML(l);
-    bindLayerProps();
+    body.innerHTML = buildShapeController(l);
+    bindLayerControls();
     return;
   }
-
   if (l.type === 'image') {
-    body.innerHTML = buildImagePropsHTML(l);
-    bindLayerProps();
+    body.innerHTML = buildImageController(l);
+    bindLayerControls();
     return;
   }
-
-  body.innerHTML = buildTextPropsHTML(l);
-  bindLayerProps();
+  body.innerHTML = buildTextController(l);
+  bindLayerControls();
 }
 
-/* ── Ring Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
-function buildRingPropsHTML(ring) {
+/* ── Unified Slider Builder ────────────────────────────────────── */
+function smoothSlider(key, min, max, step, unit, value) {
+  const uid = 's_' + key + '_' + Math.random().toString(36).slice(2, 6);
+  return `
+    <div class="ctrl-row">
+      <span class="ctrl-label">${key}</span>
+      <div class="slider-pair">
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" id="${uid}" data-ctrl="${key}">
+        <input type="number" min="${min}" max="${max}" step="${step}" value="${value}" data-ctrl="${key}">
+      </div>
+      ${unit ? `<span style="font-size:9px;color:var(--text-dim);min-width:18px">${unit}</span>` : ''}
+    </div>
+  `;
+}
+
+/* ── Ring Controller ───────────────────────────────────────────── */
+function buildRingController(ring) {
   const isCenter = ring === 'center';
   const thickness = isCenter ? cfg.innerRing2Thickness : (ring === 'outer' ? cfg.outerRingThickness : cfg.innerRingThickness);
   const thicknessKey = isCenter ? 'innerRing2Thickness' : (ring === 'outer' ? 'outerRingThickness' : 'innerRingThickness');
-  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${cfg[key]}" data-ring-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${cfg[key]}" data-ring-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
 
   return `
-    <div class="prop-group">
-      <label class="prop-label">Thickness (Size)</label>
-      <div class="slider-pair">
-        <input type="range" min="0.1" max="8" step="0.1" value="${thickness}" data-ring-prop="${thicknessKey}">
-        <input type="number" min="0.1" max="8" step="0.1" value="${thickness}" data-ring-prop="${thicknessKey}">
-      </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Size</div>
+      ${smoothSlider(thicknessKey, 0.1, 8, 0.1, 'mm', thickness)}
     </div>
-    <div class="prop-group">
-      <label class="prop-label">Width (mm)</label>
-      <div class="slider-pair">
-        <input type="range" min="15" max="254" step="0.5" value="${cfg.width}" data-ring-prop="width">
-        <input type="number" min="15" max="254" step="0.5" value="${cfg.width}" data-ring-prop="width">
-      </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Dimensions</div>
+      ${smoothSlider('width', 15, 254, 0.5, 'mm', cfg.width)}
+      ${smoothSlider('height', 10, 254, 0.5, 'mm', cfg.height)}
     </div>
-    <div class="prop-group">
-      <label class="prop-label">Height (mm)</label>
-      <div class="slider-pair">
-        <input type="range" min="10" max="254" step="0.5" value="${cfg.height}" data-ring-prop="height">
-        <input type="number" min="10" max="254" step="0.5" value="${cfg.height}" data-ring-prop="height">
-      </div>
-    </div>
-    <div class="prop-group">
-      <label class="prop-label">Curve / Arc</label>
-      <div class="slider-pair">
-        <input type="range" min="0" max="360" step="1" value="${cfg.cornerRadius * 10}" data-ring-prop="cornerCurve">
-        <input type="number" min="0" max="360" step="1" value="${cfg.cornerRadius * 10}" data-ring-prop="cornerCurve">
-      </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Curve</div>
+      ${smoothSlider('cornerRadius', 0, 50, 0.5, 'r', cfg.cornerRadius)}
     </div>
     ${cfg.rings >= 2 && !isCenter ? `
-    <div class="prop-group">
-      <label class="prop-label">Ring Gap (mm)</label>
-      <div class="slider-pair">
-        <input type="range" min="0" max="10" step="0.1" value="${cfg.ringGap}" data-ring-prop="ringGap">
-        <input type="number" min="0" max="10" step="0.1" value="${cfg.ringGap}" data-ring-prop="ringGap">
-      </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Gap</div>
+      ${smoothSlider('ringGap', 0, 10, 0.1, 'mm', cfg.ringGap)}
     </div>` : ''}
   `;
 }
 
-/* ── Text Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
-function buildTextPropsHTML(l) {
+/* ── Text Controller ───────────────────────────────────────────── */
+function buildTextController(l) {
   const weightOpts = (FONT_WEIGHTS[l.font]||[400,700,900]).map(w => {
     const names = {300:'Light',400:'Regular',500:'Medium',600:'Semi Bold',700:'Bold',800:'Extra Bold',900:'Black'};
     return `<option value="${w}"${l.weight===w?' selected':''}>${names[w]||w}</option>`;
   }).join('');
-  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
+
+  let html = `
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Content</div>
+      <div class="ctrl-row"><textarea class="ctrl-textarea" data-ctrl="text" dir="auto">${l.text}</textarea></div>
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Font</div>
+      <div class="ctrl-row" style="gap:4px">
+        <select class="ctrl-select" data-ctrl="font">${fontOptHTML(l.font)}</select>
+        <select class="ctrl-select" style="max-width:72px" data-ctrl="weight">${weightOpts}</select>
+      </div>
+      <div class="ctrl-row" style="margin-top:6px">
+        <select class="ctrl-select" data-ctrl="mode">
+          <option value="curved"${l.mode==='curved'?' selected':''}>Curved</option>
+          <option value="straight"${l.mode==='straight'?' selected':''}>Straight</option>
+        </select>
+      </div>
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Size</div>
+      ${smoothSlider('sizeMm', 1, 18, 0.1, 'mm', l.sizeMm)}
+    </div>
+  `;
+
+  if (l.mode === 'curved') {
+    html += `
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Curve / Arc</div>
+      ${smoothSlider('radiusMm', 3, 42, 0.1, 'mm', l.radiusMm)}
+      ${smoothSlider('startAngle', 0, 360, 1, '°', l.startAngle)}
+      ${smoothSlider('endAngle', 0, 360, 1, '°', l.endAngle)}
+      <div class="toggle-row">
+        <div class="toggle${l.flip?' on':''}" data-ctrl="flip"></div>
+        <span class="toggle-label">Flip</span>
+      </div>
+    </div>`;
+  } else {
+    html += `
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Position</div>
+      ${smoothSlider('offsetXmm', -50, 50, 0.1, 'x', l.offsetXmm)}
+      ${smoothSlider('offsetYmm', -50, 50, 0.1, 'y', l.offsetYmm)}
+    </div>`;
+  }
+
+  html += `
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Spacing</div>
+      ${smoothSlider('letterSpacing', -4, 20, 0.5, 'px', l.letterSpacing)}
+      ${smoothSlider('wordSpacing', -4, 30, 0.5, 'px', l.wordSpacing)}
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Scale</div>
+      ${smoothSlider('scaleX', 0.3, 3, 0.05, 'x', l.scaleX)}
+      ${smoothSlider('scaleY', 0.3, 3, 0.05, 'x', l.scaleY)}
+    </div>
+  `;
+  return html;
+}
+
+/* ── Shape Controller ──────────────────────────────────────────── */
+function buildShapeController(l) {
+  const shapeOpts = ['star','pentagon','hexagon','diamond','cross','circle'].map(s =>
+    `<option value="${s}"${l.shapeType===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`
+  ).join('');
 
   return `
-    <div class="prop-group"><label class="prop-label">Text</label><textarea class="prop-input prop-input-textarea" data-prop="text" dir="auto">${l.text}</textarea></div>
-    <div class="prop-group"><label class="prop-label">Font</label><div class="prop-row"><select class="prop-select" data-prop="font">${fontOptHTML(l.font)}</select><select class="prop-select" style="max-width:70px" data-prop="weight">${weightOpts}</select></div></div>
-    <div class="prop-group"><label class="prop-label">Mode</label><select class="prop-select" data-prop="mode"><option value="curved"${l.mode==='curved'?' selected':''}>Curved</option><option value="straight"${l.mode==='straight'?' selected':''}>Straight</option></select></div>
-    <div class="prop-group"><label class="prop-label">Size</label>${slider('sizeMm',1,18,0.1,'mm')}</div>
-    ${l.mode==='curved' ? `
-    <div class="prop-group"><label class="prop-label">Curve / Arc</label>${slider('radiusMm',3,42,0.1,'mm')}${slider('startAngle',0,360,1,'°')}${slider('endAngle',0,360,1,'°')}
-    <div class="toggle-row"><div class="toggle${l.flip?' on':''}" data-prop="flip"></div><span class="toggle-label">Flip</span></div></div>
-    ` : `<div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-50,50,0.1,'x')}${slider('offsetYmm',-50,50,0.1,'y')}</div>`}
-    <div class="prop-group"><label class="prop-label">Letter Spacing</label>${slider('letterSpacing',-4,20,0.5,'px')}</div>
-    <div class="prop-group"><label class="prop-label">Word Gap</label>${slider('wordSpacing',-4,30,0.5,'px')}</div>
-    <div class="prop-group"><label class="prop-label">Width Scale</label>${slider('scaleX',0.3,3,0.05,'x')}</div>
-    <div class="prop-group"><label class="prop-label">Height Scale</label>${slider('scaleY',0.3,3,0.05,'x')}</div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Shape</div>
+      <div class="ctrl-row"><select class="ctrl-select" data-ctrl="shapeType">${shapeOpts}</select></div>
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Size</div>
+      ${smoothSlider('shapeSizeMm', 1, 20, 0.5, 'mm', l.shapeSizeMm)}
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Rotation</div>
+      ${smoothSlider('shapeRotation', 0, 360, 1, '°', l.shapeRotation)}
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Position</div>
+      ${smoothSlider('offsetXmm', -30, 30, 0.1, 'x', l.offsetXmm)}
+      ${smoothSlider('offsetYmm', -30, 30, 0.1, 'y', l.offsetYmm)}
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Style</div>
+      <div class="toggle-row">
+        <div class="toggle${l.shapeFill?' on':''}" data-ctrl="shapeFill"></div>
+        <span class="toggle-label">Filled</span>
+      </div>
+    </div>
   `;
 }
 
-/* ── Shape Props: Size, Height, Width, Curve/Arc, Gap ──────────── */
-function buildShapePropsHTML(l) {
-  const shapeOpts = ['star','pentagon','hexagon','diamond','cross','circle'].map(s => `<option value="${s}"${l.shapeType===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
-  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??0}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
-
+/* ── Image Controller ──────────────────────────────────────────── */
+function buildImageController(l) {
   return `
-    <div class="prop-group"><label class="prop-label">Shape</label><select class="prop-select" data-prop="shapeType">${shapeOpts}</select></div>
-    <div class="prop-group"><label class="prop-label">Size</label>${slider('shapeSizeMm',1,20,0.5,'mm')}</div>
-    <div class="prop-group"><label class="prop-label">Rotation</label>${slider('shapeRotation',0,360,1,'°')}</div>
-    <div class="prop-group"><label class="prop-label">Position X</label>${slider('offsetXmm',-30,30,0.1,'mm')}</div>
-    <div class="prop-group"><label class="prop-label">Position Y</label>${slider('offsetYmm',-30,30,0.1,'mm')}</div>
-    <div class="toggle-row"><div class="toggle${l.shapeFill?' on':''}" data-prop="shapeFill"></div><span class="toggle-label">Filled</span></div>
-  `;
-}
-
-function buildImagePropsHTML(l) {
-  const slider = (key,min,max,step,unit) => `<div class="prop-row"><div class="slider-pair"><input type="range" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"><input type="number" min="${min}" max="${max}" step="${step}" value="${l[key]??10}" data-prop="${key}"></div><span style="font-size:9px;color:var(--text-dim);min-width:16px">${unit||''}</span></div>`;
-  return `
-    <div class="prop-group"><label class="prop-label">Width</label>${slider('imageWidthMm',1,30,0.5,'mm')}</div>
-    <div class="prop-group"><label class="prop-label">Height</label>${slider('imageHeightMm',1,30,0.5,'mm')}</div>
-    <div class="prop-group"><label class="prop-label">Position</label>${slider('offsetXmm',-30,30,0.1,'x')}${slider('offsetYmm',-30,30,0.1,'y')}</div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Size</div>
+      ${smoothSlider('imageWidthMm', 1, 30, 0.5, 'mm', l.imageWidthMm)}
+      ${smoothSlider('imageHeightMm', 1, 30, 0.5, 'mm', l.imageHeightMm)}
+    </div>
+    <div class="ctrl-section">
+      <div class="ctrl-section-title">Position</div>
+      ${smoothSlider('offsetXmm', -30, 30, 0.1, 'x', l.offsetXmm)}
+      ${smoothSlider('offsetYmm', -30, 30, 0.1, 'y', l.offsetYmm)}
+    </div>
   `;
 }
 
 /* ── Bind Functions ────────────────────────────────────────────── */
-function bindRingProps(ring) {
-  document.querySelectorAll('[data-ring-prop]').forEach(input => {
+function bindRingControls(ring) {
+  document.querySelectorAll('[data-ctrl]').forEach(input => {
     if (input.dataset.bound) return;
     input.dataset.bound = '1';
-    const key = input.dataset.ringProp;
+    const key = input.dataset.ctrl;
     input.addEventListener('input', () => {
-      let v = parseFloat(input.value)||0;
-      if (key === 'cornerCurve') {
-        cfg.cornerRadius = v / 10;
-      } else {
-        cfg[key] = v;
-      }
-      document.querySelectorAll(`[data-ring-prop="${key}"]`).forEach(x => { if(x!==input) x.value=v; });
+      const v = parseFloat(input.value)||0;
+      cfg[key] = v;
+      document.querySelectorAll(`[data-ctrl="${key}"]`).forEach(x => { if(x!==input) x.value = v; });
       renderD();
     });
   });
 }
 
-function bindLayerProps() {
-  document.querySelectorAll('[data-prop]').forEach(input => {
+function bindLayerControls() {
+  document.querySelectorAll('[data-ctrl]').forEach(input => {
     if (input.dataset.bound) return;
     input.dataset.bound = '1';
-    const key = input.dataset.prop;
+    const key = input.dataset.ctrl;
     const isToggle = input.classList.contains('toggle');
     const isRange = input.type === 'range';
     const isNumber = input.type === 'number';
@@ -856,8 +926,12 @@ function bindLayerProps() {
       let v = input.value;
       if (isRange || isNumber) v = parseFloat(v)||0;
       const l = selLayer();
-      if (l) { l[key] = v; if (key==='text') l.name=v; if (key==='font'||key==='mode') updateFloatingPanel(); }
-      if (isRange||isNumber) document.querySelectorAll(`[data-prop="${key}"]`).forEach(x => { if(x!==input) x.value=v; });
+      if (l) {
+        l[key] = v;
+        if (key==='text') l.name = v;
+        if (key==='font'||key==='mode') updateFloatingPanel();
+      }
+      if (isRange||isNumber) document.querySelectorAll(`[data-ctrl="${key}"]`).forEach(x => { if(x!==input) x.value = v; });
       renderD();
       if (!isRange && !isNumber) autoHist();
     });
@@ -1027,8 +1101,8 @@ function init() {
   bindTitleAndPresets();
   initSidebarToggle();
   initFloatingPanel();
+  initZoomPan();
 
-  // Top bar
   document.getElementById('undoBtn').addEventListener('click', undo);
   document.getElementById('redoBtn').addEventListener('click', redo);
   document.getElementById('saveBtn').addEventListener('click', () => { saveState(); showToast('Project saved'); });
@@ -1041,7 +1115,6 @@ function init() {
     syncAll(); render(); pushHistory(); showToast('Reset to defaults');
   });
 
-  // Import
   document.getElementById('importFile').addEventListener('change', e => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
@@ -1059,16 +1132,11 @@ function init() {
     reader.readAsDataURL(file); e.target.value='';
   });
 
-  // Window resize
   window.addEventListener('resize', () => { updateCanvasCSS(); });
 
-  if (loaded) { syncAll(); render(); updateTransform(); pushHistory(); }
-  else { syncAll(); render(); updateTransform(); }
+  if (loaded) { syncAll(); render(); pushHistory(); }
+  else { syncAll(); render(); }
   document.fonts.ready.then(() => render());
-}
-
-function updateTransform() {
-  // Placeholder for any transform updates
 }
 
 /* ── Title + Presets ───────────────────────────────────────────── */
@@ -1146,7 +1214,6 @@ function bindTitleAndPresets() {
   });
 }
 
-/* ── Preset Storage ────────────────────────────────────────────── */
 const PRESETS_KEY = 'stampstudio_presets';
 
 function loadPresetsList() {
