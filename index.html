@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,41 +24,24 @@
       <span class="brand">🖊️ Stamp Studio</span>
     </div>
     <div class="tb-center">
-      <div class="doc-title" id="docTitle">
-        <span class="doc-icon">📄</span>
+      <div class="doc-title">
         <input type="text" class="doc-name-input" id="docNameInput" value="Untitled Stamp" placeholder="Untitled" maxlength="40">
       </div>
-      <button class="preset-btn" id="savePresetBtn" title="Save current config as preset">
-        <span>💾</span> Save
-      </button>
-      <button class="preset-btn" id="loadPresetBtn" title="Load a saved preset">
-        <span>📂</span> Load
-      </button>
       <div class="color-palette">
         <div class="color-swatches" id="swatchRow"></div>
-        <input type="color" id="inkColorPicker" value="#1e3a8a" title="Custom color">
-        <input type="text" class="hex-input" id="inkHex" value="#1e3a8a" maxlength="7" title="Hex color">
+        <input type="color" id="inkColorPicker" value="#1e3a8a">
       </div>
     </div>
     <div class="tb-right">
-      <button class="tb-btn" id="undoBtn" title="Undo (Ctrl+Z)">
-        <span class="btn-icon">↶</span>
-      </button>
-      <button class="tb-btn" id="redoBtn" title="Redo (Ctrl+Y)">
-        <span class="btn-icon">↷</span>
-      </button>
+      <button class="tb-btn" id="undoBtn" title="Undo">↶</button>
+      <button class="tb-btn" id="redoBtn" title="Redo">↷</button>
       <div class="tb-divider"></div>
-      <button class="tb-btn" id="saveBtn" title="Save project (Ctrl+S)">
-        <span class="btn-icon">💾</span>
-        <span class="btn-label">Save</span>
-      </button>
-      <button class="tb-btn primary" id="exportBtn" title="Export PNG">
-        <span class="btn-icon">⬇</span>
-        <span class="btn-label">Export</span>
-      </button>
-      <button class="tb-btn danger" id="resetBtn" title="Reset to defaults">
-        <span class="btn-icon">↺</span>
-      </button>
+      <button class="tb-btn" id="zoomOut" title="Zoom Out">−</button>
+      <span class="zoom-label" id="zoomLabel">100%</span>
+      <button class="tb-btn" id="zoomIn" title="Zoom In">+</button>
+      <button class="tb-btn" id="recenterBtn" title="Recenter">⊕</button>
+      <div class="tb-divider"></div>
+      <button class="tb-btn primary" id="exportBtn" title="Export PNG">⬇ Export</button>
     </div>
   </header>
 
@@ -68,80 +51,27 @@
     <!-- ═══ LEFT SIDEBAR ═══ -->
     <aside class="left-panel" id="leftPanel">
       <div class="lp-section">
-        <div class="lp-section-title">Rings</div>
-        <div class="lp-element" data-element="outer-ring">
-          <span class="lp-dot lp-dot-outer"></span>
-          <span class="lp-name">Outer Ring</span>
-          <span class="lp-value" id="valOuterRing">1.8</span>
-        </div>
-        <div class="lp-element" data-element="inner-ring">
-          <span class="lp-dot lp-dot-inner"></span>
-          <span class="lp-name">Inner Ring</span>
-          <span class="lp-value" id="valInnerRing">0.8</span>
-        </div>
-        <div class="lp-element" data-element="center-ring" style="display:none">
-          <span class="lp-dot lp-dot-center"></span>
-          <span class="lp-name">Center Ring</span>
-          <span class="lp-value" id="valCenterRing">0.5</span>
-        </div>
+        <div class="lp-section-title">Templates</div>
+        <div class="lp-elements" id="templateList"></div>
       </div>
-
       <div class="lp-section">
-        <div class="lp-section-title">Arc Text</div>
-        <div class="lp-element" data-element="arc-top">
-          <span class="lp-icon">⌒</span>
-          <span class="lp-name">Top Arc</span>
-        </div>
-        <div class="lp-element" data-element="arc-bottom">
-          <span class="lp-icon">⌢</span>
-          <span class="lp-name">Bottom Arc</span>
-        </div>
+        <div class="lp-section-title">Elements</div>
+        <div class="lp-elements" id="elementList"></div>
       </div>
-
       <div class="lp-section">
-        <div class="lp-section-title">Straight Text</div>
-        <div class="lp-elements" id="straightTextList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Shapes</div>
-        <div class="lp-elements" id="shapeList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Images</div>
-        <div class="lp-elements" id="imageList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Stamp</div>
-        <div class="lp-element" data-element="stamp-size">
-          <span class="lp-icon">⊡</span>
-          <span class="lp-name">Size</span>
-          <span class="lp-value" id="valStampSize">62×36</span>
-        </div>
-        <div class="lp-element" data-element="stamp-offset">
-          <span class="lp-icon">⊹</span>
-          <span class="lp-name">Offset</span>
-          <span class="lp-value" id="valStampOffset">0, 0</span>
-        </div>
+        <div class="lp-section-title">Presets</div>
+        <button class="lp-btn" id="savePresetBtn">💾 Save Preset</button>
+        <button class="lp-btn" id="loadPresetBtn">📂 Load Preset</button>
+        <div class="lp-elements" id="presetList"></div>
       </div>
     </aside>
 
-    <!-- ═══ CENTER: Canvas (10x10 inch) ═══ -->
+    <!-- ═══ CENTER: Canvas ═══ -->
     <section class="workspace">
       <div class="canvas-area" id="viewport">
         <div class="canvas-wrap" id="stage">
           <canvas id="stampCanvas"></canvas>
         </div>
-        <div class="canvas-hud">
-          <span id="zoomLabel">100%</span>
-        </div>
-      </div>
-
-      <div class="template-bar">
-        <span class="tpl-label">Template:</span>
-        <div class="tpl-options" id="templateOptions"></div>
       </div>
     </section>
 
@@ -149,7 +79,7 @@
     <div class="floating-panel" id="floatingPanel">
       <div class="fp-header" id="fpHeader">
         <span>⚙️ Controller</span>
-        <button class="fp-close" id="fpClose" title="Close">×</button>
+        <button class="fp-close" id="fpClose">×</button>
       </div>
       <div class="fp-body" id="fpBody">
         <div class="empty-state">
@@ -163,14 +93,12 @@
 </div>
 
 <input type="file" id="importFile" accept="image/*" style="display:none">
-<input type="file" id="loadConfigFile" accept=".json" style="display:none">
-
 <div id="toast" class="toast"></div>
 
 <div class="modal-overlay" id="presetModal">
   <div class="modal">
     <div class="modal-header">
-      <span id="presetModalTitle">Save Preset</span>
+      <span id="presetModalTitle">Presets</span>
       <button class="modal-close" id="presetModalClose">&times;</button>
     </div>
     <div class="modal-body" id="presetModalBody"></div>
