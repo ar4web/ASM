@@ -11,6 +11,10 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const uid = () => 'L' + Math.random().toString(36).slice(2, 8);
 const lerp = (a, b, t) => a + (b - a) * t;
 
+/* ── Performance: Text strip cache ─────────────────────────────── */
+const textStripCache = new Map();
+let canvasInitialized = false;
+
 /* ── Undo / Redo ────────────────────────────────────────────────── */
 const HIST_MAX = 60;
 let histStack = [], histIdx = -1, histPushing = false;
@@ -208,9 +212,11 @@ let targetPan = { x: 0, y: 0 };
 let currentPan = { x: 0, y: 0 };
 
 function setupCanvas() {
+  if (canvasInitialized) { updateCanvasCSS(); return; }
   const canvasSizePx = 10 * 300;
   canvas.width = canvasSizePx;
   canvas.height = canvasSizePx;
+  canvasInitialized = true;
   updateCanvasCSS();
 }
 
@@ -382,6 +388,10 @@ function textEllipseMm(layer) {
 }
 
 function buildTextStrip(layer, color) {
+  // Cache key: all props that affect rendering
+  const key = `${layer.id}_${layer.text}_${layer.font}_${layer.weight}_${layer.sizeMm}_${layer.letterSpacing}_${layer.wordSpacing}_${layer.scaleX}_${layer.scaleY}_${layer.dir}_${color}`;
+  if (textStripCache.has(key)) return textStripCache.get(key);
+
   const fontPx = mmPx(layer.sizeMm);
   const fontStr = `${safeWeight(layer.font, layer.weight)} ${fontPx}px "${layer.font}"`;
   const dir = layerDir(layer);
@@ -403,7 +413,10 @@ function buildTextStrip(layer, color) {
   sc.fillStyle = color; sc.textAlign = 'center'; sc.textBaseline = 'middle';
   sc.direction = dir;
   sc.translate(sw/2, sh/2); sc.scale(sx, sy); sc.fillText(layer.text, 0, 0);
-  return { canvas: strip, textWidth: textW, pad };
+
+  const result = { canvas: strip, textWidth: textW, pad };
+  textStripCache.set(key, result);
+  return result;
 }
 
 function bleedWrap(drawFn, rng) {
@@ -509,8 +522,18 @@ function drawImageLayer(layer, cx, cy) {
   ctx.drawImage(img, -w/2, -h/2, w, h); ctx.restore();
 }
 
-/* ── Main Render ───────────────────────────────────────────────── */
+let renderQueued = false;
+
 function render() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    _render();
+  });
+}
+
+function _render() {
   setupCanvas();
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -536,7 +559,7 @@ function render() {
   });
 }
 
-const renderD = debounce(render, 30);
+const renderD = debounce(render, 16);
 
 /* ═══ POINTER EVENTS ═══ */
 function bindPointerEvents() {
@@ -916,7 +939,7 @@ function bindLayerControls() {
       input.addEventListener('click', () => {
         input.classList.toggle('on');
         const l = selLayer();
-        if (l) { l[key] = input.classList.contains('on'); renderD(); autoHist(); }
+        if (l) { l[key] = input.classList.contains('on'); textStripCache.clear(); renderD(); autoHist(); }
       });
       return;
     }
@@ -932,6 +955,7 @@ function bindLayerControls() {
         if (key==='font'||key==='mode') updateFloatingPanel();
       }
       if (isRange||isNumber) document.querySelectorAll(`[data-ctrl="${key}"]`).forEach(x => { if(x!==input) x.value = v; });
+      textStripCache.clear();
       renderD();
       if (!isRange && !isNumber) autoHist();
     });
@@ -957,9 +981,9 @@ function buildColorPalette() {
 
   const picker = document.getElementById('inkColorPicker');
   const hex = document.getElementById('inkHex');
-  picker.addEventListener('input', () => { cfg.inkColor = picker.value; hex.value = picker.value; renderD(); });
+  picker.addEventListener('input', () => { cfg.inkColor = picker.value; hex.value = picker.value; textStripCache.clear(); renderD(); });
   hex.addEventListener('input', () => {
-    if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { cfg.inkColor = hex.value; picker.value = hex.value; renderD(); }
+    if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { cfg.inkColor = hex.value; picker.value = hex.value; textStripCache.clear(); renderD(); }
   });
 
   row.querySelectorAll('.color-swatch').forEach(s => {
@@ -990,6 +1014,7 @@ function applyTemplate(name) {
   DPI_CURRENT = cfg.dpi || 300;
   selId = cfg.layers[0].id; selectedIds = new Set([selId]); selShape = false; selRing = null;
   currentElement = null;
+  textStripCache.clear();
   updateLeftPanel(); updateFloatingPanel(); updateTemplateCards(); render(); pushHistory();
   showToast(TEMPLATES[name].label + ' applied');
 }
