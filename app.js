@@ -1,47 +1,25 @@
 "use strict";
-/* ================================================================
-   Stamp Studio — Minimal · 5x5" Canvas · Left-aligned · Smooth
-   ================================================================ */
+/* Stamp Studio — Clean Rebuild */
 
-const CSS_DPI = 96, DEG = Math.PI / 180;
-let DPI_CURRENT = 300;
-const mmPx = mm => mm * (DPI_CURRENT / 25.4);
+const DEG = Math.PI / 180;
+let DPI = 300;
+const mmPx = mm => mm * (DPI / 25.4);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const uid = () => 'L' + Math.random().toString(36).slice(2, 8);
 const lerp = (a, b, t) => a + (b - a) * t;
+const debounce = (fn, ms = 16) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
-/* ── Performance ──────────────────────────────────────────────── */
-const textStripCache = new Map();
-let canvasInitialized = false;
-let renderQueued = false;
-
-/* ── Undo / Redo ──────────────────────────────────────────────── */
-const HIST_MAX = 60;
-let histStack = [], histIdx = -1, histPushing = false;
-
-function pushHistory() {
-  histStack = histStack.slice(0, histIdx + 1);
-  histStack.push(JSON.stringify(cfg));
-  if (histStack.length > HIST_MAX) histStack.shift();
-  histIdx = histStack.length - 1;
-  histPushing = false;
-  saveState();
-}
-function undo() { if (histIdx <= 0) return; histIdx--; cfg = JSON.parse(histStack[histIdx]); DPI_CURRENT = cfg.dpi || 300; syncAll(); render(); showToast('Undo'); }
-function redo() { if (histIdx >= histStack.length - 1) return; histIdx++; cfg = JSON.parse(histStack[histIdx]); DPI_CURRENT = cfg.dpi || 300; syncAll(); render(); showToast('Redo'); }
-function autoHist() { if (!histPushing) { histPushing = true; pushHistory(); } }
-
-/* ── RTL ──────────────────────────────────────────────────────── */
-const RTL_RE = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
-const isRTL = t => RTL_RE.test(t || '');
+/* ── RTL ── */
+const isRTL = t => /[؀-ۿ]/.test(t || '');
 const layerDir = l => l.dir === 'auto' ? (isRTL(l.text) ? 'rtl' : 'ltr') : l.dir;
-const debounce = (fn, ms = 40) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
+/* ── RNG ── */
 function mkRng(seed) {
   let s = seed >>> 0;
   return () => { s = (s + 0x6D2B79F5) >>> 0; let t = Math.imul(s ^ (s >>> 15), s | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
+/* ── Color ── */
 function hexRgba(hex, opacity) {
   let c = (hex || '#000000').replace('#', '').trim();
   if (c.length === 3) c = c.split('').map(x => x + x).join('');
@@ -50,10 +28,9 @@ function hexRgba(hex, opacity) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${clamp(opacity / 100, 0, 1)})`;
 }
 
-/* ── Storage ──────────────────────────────────────────────────── */
-const STORAGE_KEY = 'stampstudio_v5';
+/* ── Storage ── */
+const STORAGE_KEY = 'stampstudio_v6';
 function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch (_) {} }
-
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -62,15 +39,15 @@ function loadState() {
     if (!data || typeof data !== 'object') return false;
     cfg = buildConfig(data.template || 'oval');
     Object.assign(cfg, data);
+    if (!Array.isArray(cfg.ringsData) || cfg.ringsData.length === 0) cfg.ringsData = defaultRings();
     if (!Array.isArray(cfg.layers) || cfg.layers.length === 0) cfg.layers = defaultLayers();
     cfg.layers = cfg.layers.map(l => makeLayer(l));
     selId = cfg.layers[0]?.id || null;
-    selectedIds = new Set([selId].filter(Boolean));
     return true;
   } catch { return false; }
 }
 
-/* ── Toast ────────────────────────────────────────────────────── */
+/* ── Toast ── */
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
@@ -78,17 +55,14 @@ function showToast(msg) {
   showToast._t = setTimeout(() => el.classList.remove('show'), 1500);
 }
 
-/* ── Fonts ────────────────────────────────────────────────────── */
+/* ── Fonts ── */
 const FONTS = [
-  { group: 'Arabic', items: ['Cairo','Tajawal','Noto Sans Arabic'] },
-  { group: 'Formal', items: ['Amiri','Noto Naskh Arabic'] },
-  { group: 'Latin', items: ['Inter','Montserrat','Poppins'] },
+  { group: 'Arabic', items: ['Cairo','Tajawal'] },
+  { group: 'Latin', items: ['Inter','Montserrat'] },
 ];
 const FONT_WEIGHTS = {
   'Cairo': [400,600,700,800], 'Tajawal': [400,500,700],
-  'Noto Sans Arabic': [400,500,600,700], 'Amiri': [400,700],
-  'Noto Naskh Arabic': [400,600,700], 'Inter': [300,400,500,600,700],
-  'Montserrat': [600,700,800,900], 'Poppins': [500,600,700],
+  'Inter': [300,400,500,600,700], 'Montserrat': [700,800,900],
 };
 function safeWeight(font, weight) {
   const list = FONT_WEIGHTS[font];
@@ -97,15 +71,15 @@ function safeWeight(font, weight) {
   return list.reduce((a, b) => Math.abs(b - weight) < Math.abs(a - weight) ? b : a);
 }
 function fontOptHTML(sel) {
-  return FONTS.map(g => `<optgroup label="${g.group}">` + g.items.map(f => `<option${f === sel ? ' selected' : ''}>${f}</option>`).join('') + '</optgroup>').join('');
+  return FONTS.map(g => `<optlabel>${g.group}</optlabel>` + g.items.map(f => `<option${f === sel ? ' selected' : ''}>${f}</option>`).join('')).join('');
 }
 
-/* ── State Model ──────────────────────────────────────────────── */
+/* ── State Model ── */
 function makeLayer(o = {}) {
   return Object.assign({
     id: uid(), name: 'Text', text: 'Text',
     font: 'Inter', weight: 700,
-    sizeMm: 4, letterSpacing: 0, wordSpacing: 0,
+    sizeMm: 4, letterSpacing: 0,
     scaleX: 1, scaleY: 1, dir: 'auto', mode: 'curved', flip: false,
     radiusMm: 16, startAngle: 200, endAngle: 340,
     offsetXmm: 0, offsetYmm: 0, visible: true, type: 'text',
@@ -114,26 +88,31 @@ function makeLayer(o = {}) {
   }, o);
 }
 
+function defaultRings() {
+  return [
+    { id: uid(), thickness: 1.8, gap: 0 },
+    { id: uid(), thickness: 0.8, gap: 1.2 },
+  ];
+}
+
 function defaultLayers() {
   return [
-    makeLayer({ name: 'Top Arabic', text: 'شركة بصمة الموارد', font: 'Cairo', dir: 'rtl', weight: 800, sizeMm: 4.5, mode: 'curved', radiusMm: 16, startAngle: 200, endAngle: 340 }),
-    makeLayer({ name: 'Bottom', text: 'STAMP CO.', font: 'Inter', dir: 'ltr', weight: 700, sizeMm: 3.8, mode: 'curved', flip: true, radiusMm: 15.8, startAngle: 145, endAngle: 35 }),
-    makeLayer({ name: 'Number', text: '1234567890', font: 'Inter', weight: 900, sizeMm: 3.2, mode: 'straight', offsetYmm: 0 }),
+    makeLayer({ name: 'Top Arabic', text: 'شركة بصمة الموارد', font: 'Cairo', dir: 'rtl', weight: 800, sizeMm: 4, mode: 'curved', radiusMm: 14, startAngle: 200, endAngle: 340 }),
+    makeLayer({ name: 'Bottom', text: 'STAMP CO.', font: 'Inter', dir: 'ltr', weight: 700, sizeMm: 3.2, mode: 'curved', flip: true, radiusMm: 13.5, startAngle: 150, endAngle: 30 }),
   ];
 }
 
 function baseStyle() {
-  return { inkColor: '#1e3a8a', opacity: 100, inkBleed: true, inkBleedAmount: 0.5, rotationJitter: true, jitterDegrees: 0.9, paddingMm: 5, seed: 73219, dpi: 300 };
+  return { inkColor: '#1e3a8a', opacity: 100, inkBleed: true, inkBleedAmount: 0.5, rotationJitter: true, jitterDegrees: 0.5, seed: 73219, dpi: 300 };
 }
 
-/* ── Templates ────────────────────────────────────────────────── */
+/* ── Templates ── */
 const TEMPLATES = {
-  oval:       { label: 'Oval',    icon: '⬮', shape: 'oval',      width: 62, height: 36, outerRingThickness: 1.8, innerRingThickness: 0.8, ringGap: 2.0, cornerRadius: 4, rings: 2 },
-  circle:     { label: 'Circle',  icon: '●', shape: 'circle',    outerDiameter: 46, outerRingThickness: 2.0, innerRingThickness: 1.1, ringGap: 1.6, cornerRadius: 4, rings: 2 },
-  tripleRing: { label: 'Triple',  icon: '◉', shape: 'circle',    outerDiameter: 50, outerRingThickness: 2.2, innerRingThickness: 0.9, innerRing2Thickness: 0.6, ringGap: 1.3, cornerRadius: 4, rings: 3 },
-  rectangle:  { label: 'Rect',    icon: '▭', shape: 'rectangle', width: 72, height: 34, outerRingThickness: 1.4, innerRingThickness: 0.6, ringGap: 2.0, cornerRadius: 4, rings: 2 },
-  square:     { label: 'Square',  icon: '■', shape: 'rectangle', width: 44, height: 44, outerRingThickness: 1.6, innerRingThickness: 0, ringGap: 0, cornerRadius: 8, rings: 1 },
-  minimal:    { label: 'Minimal', icon: '○', shape: 'circle',    outerDiameter: 38, outerRingThickness: 1.1, innerRingThickness: 0, ringGap: 0, cornerRadius: 3, rings: 1 },
+  oval:       { label: 'Oval',    icon: '⬮', shape: 'oval',      width: 62, height: 36 },
+  circle:     { label: 'Circle',  icon: '●', shape: 'circle',    outerDiameter: 46 },
+  rectangle:  { label: 'Rect',    icon: '▭', shape: 'rectangle', width: 72, height: 34 },
+  square:     { label: 'Square',  icon: '■', shape: 'rectangle', width: 44, height: 44 },
+  minimal:    { label: 'Minimal', icon: '○', shape: 'circle',    outerDiameter: 38 },
 };
 
 function templateLayers(name) {
@@ -146,13 +125,12 @@ function templateLayers(name) {
     makeLayer({ name: 'Arabic', text: 'موافق', font: 'Cairo', dir: 'rtl', sizeMm: 3.5, mode: 'straight', offsetYmm: 5 }),
   ];
   if (name === 'minimal') return [
-    makeLayer({ name: 'Company', text: 'COMPANY', font: 'Montserrat', weight: 800, sizeMm: 3.2, letterSpacing: 2, mode: 'curved', radiusMm: 14, startAngle: 210, endAngle: 330 }),
+    makeLayer({ name: 'Company', text: 'COMPANY', font: 'Montserrat', weight: 800, sizeMm: 3, letterSpacing: 2, mode: 'curved', radiusMm: 12, startAngle: 210, endAngle: 330 }),
   ];
-  const ls = defaultLayers();
-  if (name === 'oval') { ls[0].radiusMm = 28; ls[1].radiusMm = 27.5; }
-  if (name === 'tripleRing') { ls[0].radiusMm = 19.5; ls[1].radiusMm = 19; }
-  if (name === 'circle') { ls[0].radiusMm = 15; ls[1].radiusMm = 14.8; }
-  return ls;
+  return [
+    makeLayer({ name: 'Top Arabic', text: 'شركة بصمة الموارد', font: 'Cairo', dir: 'rtl', weight: 800, sizeMm: 4, mode: 'curved', radiusMm: 14, startAngle: 200, endAngle: 340 }),
+    makeLayer({ name: 'Bottom', text: 'STAMP CO.', font: 'Inter', dir: 'ltr', weight: 700, sizeMm: 3.2, mode: 'curved', flip: true, radiusMm: 13.5, startAngle: 150, endAngle: 30 }),
+  ];
 }
 
 function buildConfig(name) {
@@ -161,54 +139,53 @@ function buildConfig(name) {
     template: name, shape: t.shape,
     outerDiameter: t.outerDiameter || t.width,
     width: t.width, height: t.height,
-    outerRingThickness: t.outerRingThickness,
-    innerRingThickness: t.innerRingThickness,
-    innerRing2Thickness: t.innerRing2Thickness || t.innerRingThickness * 0.8,
-    ringGap: t.ringGap, cornerRadius: t.cornerRadius, rings: t.rings,
-    shapeOffsetXmm: 0, shapeOffsetYmm: 0,
+    cornerRadius: t.shape === 'rectangle' ? 4 : 0,
+    ringsData: defaultRings(),
     layers: templateLayers(name),
   });
 }
 
 const SWATCHES = ['#1e3a8a','#c0182a','#15171c','#1f7a45','#5b21b6','#0f766e','#b45309','#0369a1'];
 
-/* ── Live State ────────────────────────────────────────────────── */
+/* ── Live State ── */
 let cfg = buildConfig('oval');
-let selId = cfg.layers[0].id;
-let selectedIds = new Set([selId]);
-let selShape = false, selRing = null, exporting = false;
-let currentElement = null;
+let selId = cfg.layers[0]?.id || null;
+let selRingId = null;
+let currentSel = null; // { type: 'ring'|'layer', id }
 
 const selLayer = () => cfg.layers.find(l => l.id === selId) || null;
 const stampSize = () => cfg.shape === 'circle' ? { w: cfg.outerDiameter, h: cfg.outerDiameter } : { w: cfg.width, h: cfg.height };
 
-/* ── Canvas & Zoom ─────────────────────────────────────────────── */
+/* ── Canvas ── */
 const canvas = document.getElementById('stampCanvas');
 const ctx = canvas.getContext('2d', { alpha: true });
 const viewport = document.getElementById('viewport');
 const zoomLabel = document.getElementById('zoomLabel');
+const zoomVal2 = document.getElementById('zoomVal2');
 
 let targetZoom = 1, currentZoom = 1;
 let targetPan = { x: 0, y: 0 }, currentPan = { x: 0, y: 0 };
+let canvasReady = false;
 
 function setupCanvas() {
-  if (canvasInitialized) { updateCanvasCSS(); return; }
-  // 5x5 inches at 300 DPI = 1500x1500px
-  canvas.width = 2.5 * 300;
+  if (canvasReady) { updateCanvasCSS(); return; }
+  canvas.width = 2.5 * 300;  // 750px
   canvas.height = 2.5 * 300;
-  canvasInitialized = true;
+  canvasReady = true;
   updateCanvasCSS();
 }
 
 function updateCanvasCSS() {
-  const vpW = viewport.clientWidth - 60;
-  const vpH = viewport.clientHeight - 40;
-  const baseSize = Math.min(vpW, vpH, 400);
-  const size = baseSize * currentZoom;
+  const vpW = viewport.clientWidth - 40;
+  const vpH = viewport.clientHeight - 20;
+  const base = Math.min(vpW, vpH, 380);
+  const size = base * currentZoom;
   canvas.style.width = size + 'px';
   canvas.style.height = size + 'px';
   canvas.style.transform = `translate(${currentPan.x}px, ${currentPan.y}px)`;
-  zoomLabel.textContent = Math.round(currentZoom * 100) + '%';
+  const pct = Math.round(currentZoom * 100) + '%';
+  if (zoomLabel) zoomLabel.textContent = pct;
+  if (zoomVal2) zoomVal2.textContent = pct;
 }
 
 function animateTransform() {
@@ -218,7 +195,7 @@ function animateTransform() {
     currentPan.x = lerp(currentPan.x, targetPan.x, 0.15);
     currentPan.y = lerp(currentPan.y, targetPan.y, 0.15);
     updateCanvasCSS();
-    if (Math.abs(currentZoom - targetZoom) > 0.002 || Math.abs(currentPan.x - targetPan.x) > 1 || Math.abs(currentPan.y - targetPan.y) > 1) {
+    if (Math.abs(currentZoom - targetZoom) > 0.002 || Math.abs(currentPan.x - targetPan.x) > 0.5 || Math.abs(currentPan.y - targetPan.y) > 0.5) {
       frame = requestAnimationFrame(step);
     }
   }
@@ -233,28 +210,73 @@ function initZoomPan() {
     animateTransform();
   }, { passive: false });
 
-  let isPanning = false, panStart = { x: 0, y: 0 };
+  let isPanning = false, pStart = { x: 0, y: 0 };
   viewport.addEventListener('mousedown', e => {
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       isPanning = true;
-      panStart = { x: e.clientX - targetPan.x, y: e.clientY - targetPan.y };
+      pStart = { x: e.clientX - targetPan.x, y: e.clientY - targetPan.y };
       viewport.style.cursor = 'grabbing';
     }
   });
   document.addEventListener('mousemove', e => {
     if (!isPanning) return;
-    targetPan.x = e.clientX - panStart.x;
-    targetPan.y = e.clientY - panStart.y;
+    targetPan.x = e.clientX - pStart.x;
+    targetPan.y = e.clientY - pStart.y;
     animateTransform();
   });
   document.addEventListener('mouseup', () => { isPanning = false; viewport.style.cursor = ''; });
   viewport.addEventListener('dblclick', () => { targetZoom = 1; targetPan = { x: 0, y: 0 }; animateTransform(); });
 }
 
-// Zoom buttons
 function zoomIn() { targetZoom = clamp(targetZoom + 0.2, 0.3, 5); animateTransform(); }
 function zoomOut() { targetZoom = clamp(targetZoom - 0.2, 0.3, 5); animateTransform(); }
 function recenter() { targetZoom = 1; targetPan = { x: 0, y: 0 }; animateTransform(); }
+
+/* ═══ SIDEBAR ═══ */
+function initSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebarToggle');
+  toggle.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+    setTimeout(updateCanvasCSS, 260);
+  });
+}
+
+/* ═══ FLOATING PANEL (draggable) ═══ */
+function initFloatingPanel() {
+  const panel = document.getElementById('floatingPanel');
+  const header = document.getElementById('fpHeader');
+  const close = document.getElementById('fpClose');
+  close.addEventListener('click', () => panel.classList.remove('open'));
+
+  let dragging = false, ox = 0, oy = 0;
+
+  header.addEventListener('mousedown', e => {
+    if (e.target.closest('.fp-close')) return;
+    dragging = true;
+    e.preventDefault();
+    const r = panel.getBoundingClientRect();
+    ox = e.clientX - r.left;
+    oy = e.clientY - r.top;
+    panel.style.transition = 'none';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - ox));
+    const y = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - oy));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+    panel.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.userSelect = '';
+    panel.style.transition = '';
+  });
+}
 
 /* ═══ DRAWING ═══ */
 function ellipseStroke(cx, cy, rx, ry, thickMm, color) {
@@ -282,20 +304,25 @@ function rectStroke(cx, cy, wPx, hPx, insetMm, thickMm, color) {
   roundRectPath(x, y, rw, rh, mmPx(cfg.cornerRadius)); ctx.stroke(); ctx.restore();
 }
 
-function drawGeometry(cx, cy, wPx, hPx, color) {
+function drawRings(cx, cy, wPx, hPx, color) {
   const rx = wPx/2, ry = hPx/2;
-  const insetPx = mmPx(cfg.outerRingThickness + cfg.ringGap);
   if (cfg.shape === 'rectangle') {
-    rectStroke(cx, cy, wPx, hPx, 0, cfg.outerRingThickness, color);
-    if (cfg.rings >= 2 && cfg.innerRingThickness > 0) rectStroke(cx, cy, wPx, hPx, cfg.outerRingThickness + cfg.ringGap, cfg.innerRingThickness, color);
-    if (cfg.rings >= 3 && cfg.innerRing2Thickness > 0) rectStroke(cx, cy, wPx, hPx, cfg.outerRingThickness + cfg.ringGap + cfg.innerRingThickness + cfg.ringGap, cfg.innerRing2Thickness, color);
+    rectStroke(cx, cy, wPx, hPx, 0, cfg.ringsData[0]?.thickness || 1.5, color);
+    let offset = (cfg.ringsData[0]?.thickness || 1.5) + (cfg.ringsData[0]?.gap || 1);
+    for (let i = 1; i < cfg.ringsData.length; i++) {
+      const r = cfg.ringsData[i];
+      if (r.thickness > 0) rectStroke(cx, cy, wPx, hPx, offset, r.thickness, color);
+      offset += r.thickness + r.gap;
+    }
     return;
   }
-  ellipseStroke(cx, cy, rx, ry, cfg.outerRingThickness, color);
-  if (cfg.rings >= 2 && cfg.innerRingThickness > 0) ellipseStroke(cx, cy, rx-insetPx, ry-insetPx, cfg.innerRingThickness, color);
-  if (cfg.rings >= 3 && cfg.innerRing2Thickness > 0) {
-    const inset2 = mmPx(cfg.outerRingThickness + cfg.ringGap) + mmPx(cfg.innerRingThickness + cfg.ringGap);
-    ellipseStroke(cx, cy, rx-inset2, ry-inset2, cfg.innerRing2Thickness, color);
+  // Circle / Oval
+  ellipseStroke(cx, cy, rx, ry, cfg.ringsData[0]?.thickness || 1.5, color);
+  let insetPx = mmPx((cfg.ringsData[0]?.thickness || 1.5) + (cfg.ringsData[0]?.gap || 1));
+  for (let i = 1; i < cfg.ringsData.length; i++) {
+    const r = cfg.ringsData[i];
+    if (r.thickness > 0) ellipseStroke(cx, cy, rx - insetPx, ry - insetPx, r.thickness, color);
+    insetPx += mmPx(r.thickness + r.gap);
   }
 }
 
@@ -306,8 +333,10 @@ function textEllipseMm(layer) {
   return { rx: r, ry: r };
 }
 
+const textStripCache = new Map();
+
 function buildTextStrip(layer, color) {
-  const key = layer.id + "_" + layer.text + "_" + layer.font + "_" + layer.weight + "_" + layer.sizeMm + "_" + layer.letterSpacing + "_" + layer.wordSpacing + "_" + layer.scaleX + "_" + layer.scaleY + "_" + layer.dir + "_" + color;
+  const key = layer.id + "_" + layer.text + "_" + layer.font + "_" + layer.weight + "_" + layer.sizeMm + "_" + layer.letterSpacing + "_" + layer.scaleX + "_" + layer.scaleY + "_" + layer.dir + "_" + color;
   if (textStripCache.has(key)) return textStripCache.get(key);
   const fontPx = mmPx(layer.sizeMm);
   const fontStr = safeWeight(layer.font, layer.weight) + " " + fontPx + 'px "' + layer.font + '"';
@@ -335,7 +364,7 @@ function buildTextStrip(layer, color) {
 
 function bleedWrap(drawFn, rng) {
   if (!cfg.inkBleed || cfg.inkBleedAmount <= 0) { drawFn(); return; }
-  const blurPx = mmPx(cfg.inkBleedAmount) * 0.20;
+  const blurPx = mmPx(cfg.inkBleedAmount) * 0.2;
   ctx.save(); ctx.globalAlpha *= 0.16; ctx.filter = "blur(" + blurPx + "px)";
   for (let i = 0; i < 4; i++) { ctx.save(); ctx.translate((rng()-0.5)*mmPx(0.09), (rng()-0.5)*mmPx(0.09)); drawFn(); ctx.restore(); }
   ctx.restore(); drawFn();
@@ -370,12 +399,11 @@ function drawStraightLayer(layer, cx, cy, color, rng) {
   const tx = cx + mmPx(layer.offsetXmm), ty = cy + mmPx(layer.offsetYmm);
   const draw = () => {
     ctx.save();
-    const fontStr = safeWeight(layer.font, layer.weight) + " " + fontPx + 'px "' + layer.font + '"';
+    ctx.font = safeWeight(layer.font, layer.weight) + " " + fontPx + 'px "' + layer.font + '"';
     if ("letterSpacing" in ctx) ctx.letterSpacing = layer.letterSpacing + "px";
     ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.direction = layerDir(layer);
-    const sx = layer.scaleX||1, sy = layer.scaleY||1;
-    ctx.translate(tx, ty); ctx.scale(sx, sy); ctx.fillText(layer.text, 0, 0);
+    ctx.translate(tx, ty); ctx.scale(layer.scaleX||1, layer.scaleY||1); ctx.fillText(layer.text, 0, 0);
     ctx.restore();
   };
   bleedWrap(draw, rng);
@@ -411,25 +439,24 @@ function drawImageLayer(layer, cx, cy) {
 }
 
 /* ═══ RENDER ═══ */
+let renderQueued = false;
 function render() {
   if (renderQueued) return;
   renderQueued = true;
-  requestAnimationFrame(() => { renderQueued = false; _render(); });
+  requestAnimationFrame(() => { renderQueued = false; _doRender(); });
 }
 
-function _render() {
+function _doRender() {
   setupCanvas();
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
   const stampW = mmPx(stampSize().w);
   const stampH = mmPx(stampSize().h);
-  const cx = W/2 + mmPx(cfg.shapeOffsetXmm || 0);
-  const cy = H/2 + mmPx(cfg.shapeOffsetYmm || 0);
+  const cx = W/2, cy = H/2;
   const color = hexRgba(cfg.inkColor, cfg.opacity);
   const rng = mkRng(cfg.seed);
-  drawGeometry(cx, cy, stampW, stampH, color);
+  drawRings(cx, cy, stampW, stampH, color);
   cfg.layers.forEach(layer => {
     if (!layer.visible) return;
     if (layer.type === "text" && layer.mode === "curved") drawCurvedLayer(layer, cx, cy, color, rng);
@@ -445,83 +472,108 @@ const renderD = debounce(render, 16);
 function bindPointerEvents() {
   canvas.addEventListener("mousedown", e => {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * sx, my = (e.clientY - rect.top) * sy;
     const stampW = mmPx(stampSize().w), stampH = mmPx(stampSize().h);
-    const cx = canvas.width/2 + mmPx(cfg.shapeOffsetXmm || 0);
-    const cy = canvas.height/2 + mmPx(cfg.shapeOffsetYmm || 0);
+    const cx = canvas.width/2, cy = canvas.height/2;
     const dx = (mx - cx) / (stampW/2), dy = (my - cy) / (stampH/2);
     const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist > 0.7 && dist < 1.15) {
-      if (dist > 0.85) selectElement({ type: "ring", id: "outer-ring" });
-      else if (cfg.rings >= 2) selectElement({ type: "ring", id: "inner-ring" });
+    if (dist > 0.7 && dist < 1.2) {
+      if (dist > 0.85) selectRing(cfg.ringsData[0]?.id);
+      else if (cfg.ringsData.length > 1) selectRing(cfg.ringsData[1]?.id);
       return;
     }
     let found = false;
     cfg.layers.forEach(layer => {
       const lcx = cx + mmPx(layer.offsetXmm), lcy = cy + mmPx(layer.offsetYmm);
       const d = Math.hypot(mx - lcx, my - lcy);
-      if (d < mmPx(layer.sizeMm || layer.shapeSizeMm || 4) * 2.5) { selectElement({ type: "layer", id: layer.id }); found = true; }
+      if (d < mmPx(layer.sizeMm || 4) * 2.5) { selectLayer(layer.id); found = true; }
     });
-    if (!found) selectElement(null);
+    if (!found) selectNone();
   });
 }
 
 /* ═══ SELECTION ═══ */
-function selectElement(el) {
-  if (!el) { currentElement = null; selShape = false; selRing = null; selId = null; selectedIds.clear(); }
-  else if (el.type === "ring") { currentElement = el.id; selRing = el.id.replace("-ring",""); selShape = true; selId = null; selectedIds.clear(); }
-  else if (el.type === "layer") { selId = el.id; selectedIds = new Set([el.id]); currentElement = el.id; selShape = false; selRing = null; }
-  updateLeftPanel();
+function selectRing(ringId) {
+  currentSel = { type: 'ring', id: ringId };
+  selRingId = ringId;
+  selId = null;
+  updateSidebar();
+  updateFloatingPanel();
+  render();
+}
+function selectLayer(layerId) {
+  currentSel = { type: 'layer', id: layerId };
+  selId = layerId;
+  selRingId = null;
+  updateSidebar();
+  updateFloatingPanel();
+  render();
+}
+function selectNone() {
+  currentSel = null; selId = null; selRingId = null;
+  updateSidebar();
   updateFloatingPanel();
   render();
 }
 
-/* ═══ LEFT PANEL ═══ */
-function updateLeftPanel() {
+/* ═══ SIDEBAR UPDATE ═══ */
+function updateSidebar() {
   // Templates
-  const tplList = document.getElementById("templateList");
-  if (tplList) {
-    tplList.innerHTML = Object.entries(TEMPLATES).map(([key, t]) =>
-      `<div class="tpl-card${cfg.template === key ? " active" : ""}" data-tpl="${key}">
-        <span class="tpl-icon">${t.icon}</span><span class="tpl-name">${t.label}</span>
+  const tl = document.getElementById("templateList");
+  if (tl) {
+    tl.innerHTML = Object.entries(TEMPLATES).map(([k, t]) =>
+      `<div class="lp-el${cfg.template === k ? ' selected' : ''}" data-tpl="${k}">
+        <span class="lp-icon">${t.icon}</span><span class="lp-name">${t.label}</span>
       </div>`
     ).join("");
-    tplList.querySelectorAll(".tpl-card").forEach(c => c.addEventListener("click", () => applyTemplate(c.dataset.tpl)));
+    tl.querySelectorAll("[data-tpl]").forEach(el => el.addEventListener("click", () => applyTemplate(el.dataset.tpl)));
+  }
+
+  // Rings
+  const rl = document.getElementById("ringList");
+  if (rl) {
+    rl.innerHTML = cfg.ringsData.map((r, i) =>
+      `<div class="lp-el${selRingId === r.id ? ' selected' : ''}" data-ring="${r.id}">
+        <span class="lp-icon">◯</span><span class="lp-name">Ring ${i + 1}</span>
+        <span class="lp-val">${r.thickness}mm</span>
+      </div>`
+    ).join("");
+    rl.querySelectorAll("[data-ring]").forEach(el => el.addEventListener("click", () => selectRing(el.dataset.ring)));
   }
 
   // Elements
-  const elList = document.getElementById("elementList");
-  if (elList) {
-    let html = "";
-    html += `<div class="lp-element${currentElement === "outer-ring" ? " selected" : ""}" data-el="outer-ring">
-      <span class="lp-icon">◯</span><span class="lp-name">Outer Ring</span></div>`;
-    if (cfg.rings >= 2) html += `<div class="lp-element${currentElement === "inner-ring" ? " selected" : ""}" data-el="inner-ring">
-      <span class="lp-icon">◯</span><span class="lp-name">Inner Ring</span></div>`;
-    cfg.layers.forEach(l => {
-      html += `<div class="lp-element${currentElement === l.id ? " selected" : ""}" data-el="${l.id}">
+  const el = document.getElementById("elementList");
+  if (el) {
+    el.innerHTML = cfg.layers.map(l =>
+      `<div class="lp-el${selId === l.id ? ' selected' : ''}" data-layer="${l.id}">
         <span class="lp-icon">${l.type === "shape" ? "★" : "T"}</span>
-        <span class="lp-name">${l.name || l.text}</span></div>`;
-    });
-    elList.innerHTML = html;
-    elList.querySelectorAll(".lp-element").forEach(el => el.addEventListener("click", () => {
-      const id = el.dataset.el;
-      if (id === "outer-ring" || id === "inner-ring") selectElement({ type: "ring", id: id });
-      else selectElement({ type: "layer", id: id });
-    }));
+        <span class="lp-name">${l.name || l.text}</span>
+      </div>`
+    ).join("");
+    el.querySelectorAll("[data-layer]").forEach(e2 => e2.addEventListener("click", () => selectLayer(e2.dataset.layer)));
   }
 
   // Presets
-  const pList = document.getElementById("presetList");
-  if (pList) {
+  const pl = document.getElementById("presetList");
+  if (pl) {
     const presets = loadPresetsList();
-    pList.innerHTML = presets.length === 0 ? "<div style=\"font-size:9px;color:var(--text-dim);padding:4px 8px\">No presets</div>" :
-      presets.map((p, i) => `<div class="lp-element" data-preset="${i}">
-        <span class="lp-icon">📄</span><span class="lp-name">${p.name}</span></div>`).join("");
-    pList.querySelectorAll("[data-preset]").forEach(el => el.addEventListener("click", () => {
-      loadPreset(parseInt(el.dataset.preset));
-    }));
+    pl.innerHTML = presets.length === 0 ? '<div style="font-size:9px;color:var(--text-dim);padding:4px 8px">No presets</div>' :
+      presets.map((p, i) => `<div class="lp-el" data-preset="${i}"><span class="lp-icon">📄</span><span class="lp-name">${p.name}</span></div>`).join("");
+    pl.querySelectorAll("[data-preset]").forEach(e2 => e2.addEventListener("click", () => { loadPreset(parseInt(e2.dataset.preset)); updateSidebar(); }));
   }
+}
+
+/* ═══ ADD RING ═══ */
+function addRing() {
+  const lastRing = cfg.ringsData[cfg.ringsData.length - 1];
+  const newThickness = 0.6;
+  const newGap = 1.0;
+  cfg.ringsData.push({ id: uid(), thickness: newThickness, gap: newGap });
+  textStripCache.clear();
+  updateSidebar();
+  render();
+  showToast("Ring added");
 }
 
 /* ═══ FLOATING CONTROLLER ═══ */
@@ -529,116 +581,110 @@ function updateFloatingPanel() {
   const panel = document.getElementById("floatingPanel");
   const body = document.getElementById("fpBody");
   const header = document.getElementById("fpHeader").querySelector("span");
-  const l = selLayer();
 
-  if (selShape && selRing) {
-    header.textContent = "⚙️ " + selRing.charAt(0).toUpperCase() + selRing.slice(1) + " Ring";
-    body.innerHTML = buildRingController(selRing);
-    bindRingControls(selRing);
+  if (currentSel?.type === "ring") {
+    const ring = cfg.ringsData.find(r => r.id === currentSel.id);
+    if (!ring) { panel.classList.remove("open"); return; }
+    const idx = cfg.ringsData.indexOf(ring);
+    header.textContent = "⚙️ Ring " + (idx + 1);
+    body.innerHTML = ringController(ring, idx);
+    bindRingControls(ring);
     panel.classList.add("open");
     return;
   }
+
+  const l = selLayer();
   if (!l) {
     header.textContent = "⚙️ Controller";
-    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to control it</div></div>';
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to control</div></div>';
     panel.classList.remove("open");
     return;
   }
   header.textContent = "⚙️ " + (l.name || "Layer");
   panel.classList.add("open");
-  if (l.type === "shape") { body.innerHTML = buildShapeController(l); bindLayerControls(); return; }
-  if (l.type === "image") { body.innerHTML = buildImageController(l); bindLayerControls(); return; }
-  body.innerHTML = buildTextController(l);
+  if (l.type === "shape") { body.innerHTML = shapeController(l); bindLayerControls(); return; }
+  if (l.type === "image") { body.innerHTML = imageController(l); bindLayerControls(); return; }
+  body.innerHTML = textController(l);
   bindLayerControls();
 }
 
-function smoothSlider(key, min, max, step, unit, value) {
-  return `<div class="ctrl-row">
-    <span class="ctrl-label">${key}</span>
+function sldr(key, min, max, step, unit, val) {
+  return `<div class="ctrl-row"><span class="ctrl-label">${key}</span>
     <div class="slider-pair">
-      <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-ctrl="${key}">
-      <input type="number" min="${min}" max="${max}" step="${step}" value="${value}" data-ctrl="${key}">
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-ctrl="${key}">
+      <input type="number" min="${min}" max="${max}" step="${step}" value="${val}" data-ctrl="${key}">
     </div>
     ${unit ? '<span style="font-size:9px;color:var(--text-dim)">' + unit + "</span>" : ""}
   </div>`;
 }
 
-function buildRingController(ring) {
-  const isCenter = ring === "center";
-  const thickness = isCenter ? cfg.innerRing2Thickness : (ring === "outer" ? cfg.outerRingThickness : cfg.innerRingThickness);
-  const tk = isCenter ? "innerRing2Thickness" : (ring === "outer" ? "outerRingThickness" : "innerRingThickness");
-  let html = '<div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
-  html += smoothSlider(tk, 0.1, 8, 0.1, "mm", thickness);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Dimensions</div>';
-  html += smoothSlider("width", 15, 120, 0.5, "mm", cfg.width);
-  html += smoothSlider("height", 10, 100, 0.5, "mm", cfg.height);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Curve</div>';
-  html += smoothSlider("cornerRadius", 0, 30, 0.5, "r", cfg.cornerRadius);
-  if (cfg.rings >= 2 && !isCenter) {
-    html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Gap</div>';
-    html += smoothSlider("ringGap", 0, 10, 0.1, "mm", cfg.ringGap);
-  }
-  html += "</div>";
-  return html;
+function ringController(ring, idx) {
+  let h = '<div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
+  h += sldr("thickness", 0.1, 8, 0.1, "mm", ring.thickness);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Gap</div>';
+  h += sldr("gap", 0, 10, 0.1, "mm", ring.gap);
+  if (idx > 0) h += '<div class="ctrl-row"><button class="lp-btn" style="width:100%;color:var(--danger)" data-delring="' + ring.id + '">Remove Ring</button></div>';
+  h += "</div>";
+  return h;
 }
 
-function buildTextController(l) {
+function textController(l) {
   const weightOpts = (FONT_WEIGHTS[l.font]||[400,700]).map(w => {
-    const names = {300:"Light",400:"Regular",500:"Medium",600:"Semi",700:"Bold",800:"Extra",900:"Black"};
-    return '<option value="' + w + '"' + (l.weight===w?" selected":"") + ">" + (names[w]||w) + "</option>";
+    const n = {300:"Light",400:"Regular",500:"Medium",600:"Semi",700:"Bold",800:"Extra",900:"Black"};
+    return '<option value="' + w + '"' + (l.weight===w?" selected":"") + ">" + (n[w]||w) + "</option>";
   }).join("");
-  let html = '<div class="ctrl-section"><div class="ctrl-section-title">Text</div>';
-  html += '<div class="ctrl-row"><textarea class="ctrl-textarea" data-ctrl="text" dir="auto">' + l.text + "</textarea></div>";
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Font</div><div class="ctrl-row" style="gap:4px">';
-  html += '<select class="ctrl-select" data-ctrl="font">' + fontOptHTML(l.font) + "</select>";
-  html += '<select class="ctrl-select" style="max-width:65px" data-ctrl="weight">' + weightOpts + "</select>";
-  html += '</div></div><div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
-  html += smoothSlider("sizeMm", 1, 18, 0.1, "mm", l.sizeMm);
+  let h = '<div class="ctrl-section"><div class="ctrl-section-title">Text</div>';
+  h += '<div class="ctrl-row"><textarea class="ctrl-textarea" data-ctrl="text" dir="auto">' + l.text + "</textarea></div>";
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Font</div><div class="ctrl-row" style="gap:4px">';
+  h += '<select class="ctrl-select" data-ctrl="font">' + fontOptHTML(l.font) + "</select>";
+  h += '<select class="ctrl-select" style="max-width:60px" data-ctrl="weight">' + weightOpts + "</select>";
+  h += '</div></div><div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
+  h += sldr("sizeMm", 1, 18, 0.1, "mm", l.sizeMm);
   if (l.mode === "curved") {
-    html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Curve</div>';
-    html += smoothSlider("radiusMm", 3, 42, 0.1, "mm", l.radiusMm);
-    html += smoothSlider("startAngle", 0, 360, 1, "°", l.startAngle);
-    html += smoothSlider("endAngle", 0, 360, 1, "°", l.endAngle);
-    html += '<div class="toggle-row"><div class="toggle' + (l.flip?" on":"") + '" data-ctrl="flip"></div><span class="toggle-label">Flip</span></div>';
+    h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Curve</div>';
+    h += sldr("radiusMm", 3, 42, 0.1, "mm", l.radiusMm);
+    h += sldr("startAngle", 0, 360, 1, "°", l.startAngle);
+    h += sldr("endAngle", 0, 360, 1, "°", l.endAngle);
+    h += '<div class="toggle-row"><div class="toggle' + (l.flip?" on":"") + '" data-ctrl="flip"></div><span class="toggle-label">Flip</span></div>';
   } else {
-    html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
-    html += smoothSlider("offsetXmm", -50, 50, 0.1, "x", l.offsetXmm);
-    html += smoothSlider("offsetYmm", -50, 50, 0.1, "y", l.offsetYmm);
+    h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
+    h += sldr("offsetXmm", -50, 50, 0.1, "x", l.offsetXmm);
+    h += sldr("offsetYmm", -50, 50, 0.1, "y", l.offsetYmm);
   }
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Spacing</div>';
-  html += smoothSlider("letterSpacing", -4, 20, 0.5, "px", l.letterSpacing);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Scale</div>';
-  html += smoothSlider("scaleX", 0.3, 3, 0.05, "x", l.scaleX);
-  html += smoothSlider("scaleY", 0.3, 3, 0.05, "x", l.scaleY);
-  html += "</div>";
-  return html;
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Spacing</div>';
+  h += sldr("letterSpacing", -4, 20, 0.5, "px", l.letterSpacing);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Scale</div>';
+  h += sldr("scaleX", 0.3, 3, 0.05, "x", l.scaleX);
+  h += sldr("scaleY", 0.3, 3, 0.05, "x", l.scaleY);
+  h += "</div>";
+  return h;
 }
 
-function buildShapeController(l) {
+function shapeController(l) {
   const opts = ["star","circle","diamond"].map(s => '<option value="' + s + '"' + (l.shapeType===s?" selected":"") + ">" + s.charAt(0).toUpperCase()+s.slice(1) + "</option>").join("");
-  let html = '<div class="ctrl-section"><div class="ctrl-section-title">Shape</div><div class="ctrl-row"><select class="ctrl-select" data-ctrl="shapeType">' + opts + "</select></div>";
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
-  html += smoothSlider("shapeSizeMm", 1, 20, 0.5, "mm", l.shapeSizeMm);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Rotation</div>';
-  html += smoothSlider("shapeRotation", 0, 360, 1, "°", l.shapeRotation);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
-  html += smoothSlider("offsetXmm", -30, 30, 0.1, "x", l.offsetXmm);
-  html += smoothSlider("offsetYmm", -30, 30, 0.1, "y", l.offsetYmm);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Style</div>';
-  html += '<div class="toggle-row"><div class="toggle' + (l.shapeFill?" on":"") + '" data-ctrl="shapeFill"></div><span class="toggle-label">Filled</span></div>';
-  html += "</div>";
-  return html;
+  let h = '<div class="ctrl-section"><div class="ctrl-section-title">Shape</div><div class="ctrl-row"><select class="ctrl-select" data-ctrl="shapeType">' + opts + "</select></div>";
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
+  h += sldr("shapeSizeMm", 1, 20, 0.5, "mm", l.shapeSizeMm);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Rotation</div>';
+  h += sldr("shapeRotation", 0, 360, 1, "°", l.shapeRotation);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
+  h += sldr("offsetXmm", -30, 30, 0.1, "x", l.offsetXmm);
+  h += sldr("offsetYmm", -30, 30, 0.1, "y", l.offsetYmm);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Style</div>';
+  h += '<div class="toggle-row"><div class="toggle' + (l.shapeFill?" on":"") + '" data-ctrl="shapeFill"></div><span class="toggle-label">Filled</span></div>';
+  h += "</div>";
+  return h;
 }
 
-function buildImageController(l) {
-  let html = '<div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
-  html += smoothSlider("imageWidthMm", 1, 30, 0.5, "mm", l.imageWidthMm);
-  html += smoothSlider("imageHeightMm", 1, 30, 0.5, "mm", l.imageHeightMm);
-  html += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
-  html += smoothSlider("offsetXmm", -30, 30, 0.1, "x", l.offsetXmm);
-  html += smoothSlider("offsetYmm", -30, 30, 0.1, "y", l.offsetYmm);
-  html += "</div>";
-  return html;
+function imageController(l) {
+  let h = '<div class="ctrl-section"><div class="ctrl-section-title">Size</div>';
+  h += sldr("imageWidthMm", 1, 30, 0.5, "mm", l.imageWidthMm);
+  h += sldr("imageHeightMm", 1, 30, 0.5, "mm", l.imageHeightMm);
+  h += '</div><div class="ctrl-section"><div class="ctrl-section-title">Position</div>';
+  h += sldr("offsetXmm", -30, 30, 0.1, "x", l.offsetXmm);
+  h += sldr("offsetYmm", -30, 30, 0.1, "y", l.offsetYmm);
+  h += "</div>";
+  return h;
 }
 
 /* ═══ BIND CONTROLS ═══ */
@@ -648,10 +694,15 @@ function bindRingControls(ring) {
     input.dataset.bound = "1";
     const key = input.dataset.ctrl;
     input.addEventListener("input", () => {
-      cfg[key] = parseFloat(input.value)||0;
+      ring[key] = parseFloat(input.value)||0;
       document.querySelectorAll("[data-ctrl=\""+key+"\"]").forEach(x => { if(x!==input) x.value = input.value; });
-      renderD();
+      textStripCache.clear(); renderD();
     });
+  });
+  const delBtn = document.querySelector("[data-delring]");
+  if (delBtn) delBtn.addEventListener("click", () => {
+    cfg.ringsData = cfg.ringsData.filter(r => r.id !== delBtn.dataset.delring);
+    selectNone();
   });
 }
 
@@ -667,7 +718,7 @@ function bindLayerControls() {
       input.addEventListener("click", () => {
         input.classList.toggle("on");
         const l = selLayer();
-        if (l) { l[key] = input.classList.contains("on"); textStripCache.clear(); renderD(); autoHist(); }
+        if (l) { l[key] = input.classList.contains("on"); textStripCache.clear(); renderD(); }
       });
       return;
     }
@@ -676,11 +727,13 @@ function bindLayerControls() {
       let v = input.value;
       if (isRange || isNumber) v = parseFloat(v)||0;
       const l = selLayer();
-      if (l) { l[key] = v; if (key==="text") l.name=v; if (key==="font"||key==="mode") updateFloatingPanel(); }
+      if (l) {
+        l[key] = v;
+        if (key==="text") l.name = v;
+        if (key==="font"||key==="mode") updateFloatingPanel();
+      }
       if (isRange||isNumber) document.querySelectorAll("[data-ctrl=\""+key+"\"]").forEach(x => { if(x!==input) x.value = v; });
-      textStripCache.clear();
-      renderD();
-      if (!isRange && !isNumber) autoHist();
+      textStripCache.clear(); renderD();
     });
   });
 }
@@ -707,16 +760,18 @@ function applyTemplate(name) {
   if (!TEMPLATES[name]) return;
   const saved = { inkColor: cfg.inkColor, opacity: cfg.opacity };
   cfg = Object.assign(buildConfig(name), saved);
-  DPI_CURRENT = cfg.dpi || 300;
-  selId = cfg.layers[0].id; selectedIds = new Set([selId]); selShape = false; selRing = null; currentElement = null;
+  DPI = cfg.dpi || 300;
+  selId = cfg.layers[0]?.id || null;
   textStripCache.clear();
-  updateLeftPanel(); updateFloatingPanel(); render(); pushHistory();
+  updateSidebar();
+  updateFloatingPanel();
+  render();
   showToast(TEMPLATES[name].label);
 }
 
 /* ═══ EXPORT ═══ */
-function download(url, filename) {
-  const a = document.createElement("a"); a.href = url; a.download = filename;
+function download(url, fname) {
+  const a = document.createElement("a"); a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove();
 }
 
@@ -726,14 +781,30 @@ function exportPNG() {
   showToast("PNG exported");
 }
 
+/* ═══ PRESETS ── */
+const PRESETS_KEY = "stampstudio_presets_v2";
+function loadPresetsList() { try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || []; } catch { return []; } }
+function savePreset(name) {
+  const p = loadPresetsList(); p.push({ name, config: JSON.parse(JSON.stringify(cfg)) });
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(p)); showToast("Saved: " + name);
+}
+function loadPreset(index) {
+  const p = loadPresetsList(); if (!p[index]) return;
+  cfg = JSON.parse(JSON.stringify(p[index].config));
+  cfg.seed = cfg.seed || Math.floor(Math.random() * 1e6);
+  DPI = cfg.dpi || 300; selId = cfg.layers[0]?.id || null;
+  textStripCache.clear(); syncAll(); render();
+  showToast("Loaded: " + p[index].name);
+}
+
 /* ═══ SYNC + INIT ═══ */
-function syncAll() { DPI_CURRENT = cfg.dpi || 300; updateLeftPanel(); updateFloatingPanel(); }
+function syncAll() { DPI = cfg.dpi || 300; updateSidebar(); updateFloatingPanel(); }
 
 function init() {
   const loaded = loadState();
   buildColorPalette();
   bindPointerEvents();
-  initSidebarToggle();
+  initSidebar();
   initFloatingPanel();
   initZoomPan();
 
@@ -742,10 +813,14 @@ function init() {
   document.getElementById("zoomIn").addEventListener("click", zoomIn);
   document.getElementById("zoomOut").addEventListener("click", zoomOut);
   document.getElementById("recenterBtn").addEventListener("click", recenter);
+  document.getElementById("zoomIn2").addEventListener("click", zoomIn);
+  document.getElementById("zoomOut2").addEventListener("click", zoomOut);
+  document.getElementById("recenterBtn2").addEventListener("click", recenter);
   document.getElementById("exportBtn").addEventListener("click", exportPNG);
+  document.getElementById("addRingBtn").addEventListener("click", addRing);
+
   document.getElementById("savePresetBtn").addEventListener("click", () => {
-    const name = prompt("Preset name:");
-    if (name) { savePreset(name); updateLeftPanel(); }
+    const name = prompt("Preset name:"); if (name) { savePreset(name); updateSidebar(); }
   });
   document.getElementById("loadPresetBtn").addEventListener("click", () => {
     const presets = loadPresetsList();
@@ -753,11 +828,11 @@ function init() {
     const modal = document.getElementById("presetModal");
     const body = document.getElementById("presetModalBody");
     document.getElementById("presetModalTitle").textContent = "Load Preset";
-    body.innerHTML = presets.map((p, i) =>
-      '<div class="preset-item" data-idx="' + i + '"><span class="preset-name">' + p.name + "</span></div>"
-    ).join("");
+    body.innerHTML = '<div class="preset-list">' + presets.map((p, i) =>
+      '<div class="preset-item" data-idx="' + i + '"><span class="preset-name">' + p.name + '</span></div>'
+    ).join("") + '</div>';
     body.querySelectorAll(".preset-item").forEach(el => el.addEventListener("click", () => {
-      loadPreset(parseInt(el.dataset.idx)); updateLeftPanel(); modal.classList.remove("show");
+      loadPreset(parseInt(el.dataset.idx)); updateSidebar(); modal.classList.remove("show");
     }));
     modal.classList.add("show");
   });
@@ -773,8 +848,8 @@ function init() {
         const maxMm=12; let w=maxMm,h=maxMm;
         if(img.width>img.height) h=maxMm*(img.height/img.width); else w=maxMm*(img.width/img.height);
         const l = makeLayer({type:"image",name:"Image",imageData:ev.target.result,imageWidthMm:Math.round(w*10)/10,imageHeightMm:Math.round(h*10)/10});
-        cfg.layers.push(l); selId=l.id; selectedIds=new Set([selId]);
-        autoHist(); updateLeftPanel(); updateFloatingPanel(); render(); showToast("Image imported");
+        cfg.layers.push(l); selId=l.id;
+        updateSidebar(); updateFloatingPanel(); render(); showToast("Image imported");
       };
       img.src = ev.target.result;
     };
@@ -783,32 +858,9 @@ function init() {
 
   window.addEventListener("resize", () => updateCanvasCSS());
 
-  if (loaded) { syncAll(); render(); pushHistory(); }
+  if (loaded) { syncAll(); render(); }
   else { syncAll(); render(); }
   document.fonts.ready.then(() => render());
-}
-
-/* ── Presets ── */
-const PRESETS_KEY = "stampstudio_presets_v2";
-function loadPresetsList() { try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || []; } catch { return []; } }
-function savePreset(name) {
-  const presets = loadPresetsList();
-  presets.push({ name, config: JSON.parse(JSON.stringify(cfg)), date: Date.now() });
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-  showToast("Saved: " + name);
-}
-function loadPreset(index) {
-  const presets = loadPresetsList();
-  if (!presets[index]) return;
-  cfg = JSON.parse(JSON.stringify(presets[index].config));
-  cfg.seed = cfg.seed || Math.floor(Math.random() * 1e6);
-  DPI_CURRENT = cfg.dpi || 300;
-  selId = cfg.layers[0]?.id || null;
-  selectedIds = new Set([selId].filter(Boolean));
-  selShape = false; selRing = null; currentElement = null;
-  textStripCache.clear();
-  syncAll(); render(); pushHistory();
-  showToast("Loaded: " + presets[index].name);
 }
 
 init();

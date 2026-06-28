@@ -6,106 +6,103 @@
   <title>Stamp Studio</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg">
   <link rel="dns-prefetch" href="https://fonts.googleapis.com">
-  <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet"></noscript>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="app">
 
-  <!-- ═══ TOP BAR ═══ -->
   <header class="topbar">
     <div class="tb-left">
       <img src="logo.svg" class="brand-logo" alt="Logo">
       <span class="brand">Stamp Studio</span>
     </div>
     <div class="tb-center">
-      <div class="doc-title">
-        <input type="text" class="doc-name-input" id="docNameInput" value="Untitled Stamp" placeholder="Untitled" maxlength="40">
-      </div>
+      <input type="text" class="doc-name-input" id="docNameInput" value="Untitled Stamp" placeholder="Untitled" maxlength="40">
       <div class="color-palette">
         <div class="color-swatches" id="swatchRow"></div>
         <input type="color" id="inkColorPicker" value="#1e3a8a">
       </div>
     </div>
     <div class="tb-right">
-      <button class="tb-btn" id="undoBtn" title="Undo">↶</button>
-      <button class="tb-btn" id="redoBtn" title="Redo">↷</button>
+      <button class="tb-btn" id="undoBtn">↶</button>
+      <button class="tb-btn" id="redoBtn">↷</button>
       <div class="tb-divider"></div>
-      <button class="tb-btn" id="zoomOut" title="Zoom Out">−</button>
+      <button class="tb-btn" id="zoomOut">−</button>
       <span class="zoom-label" id="zoomLabel">100%</span>
-      <button class="tb-btn" id="zoomIn" title="Zoom In">+</button>
+      <button class="tb-btn" id="zoomIn">+</button>
       <button class="tb-btn" id="recenterBtn" title="Recenter">⊕</button>
       <div class="tb-divider"></div>
-      <button class="tb-btn primary" id="exportBtn" title="Export PNG">⬇ Export</button>
+      <button class="tb-btn primary" id="exportBtn">⬇ Export</button>
     </div>
   </header>
 
-  <!-- ═══ MAIN AREA ═══ -->
   <main class="main">
-
-    <!-- ═══ LEFT SIDEBAR ═══ -->
-    <aside class="left-panel" id="leftPanel">
-      <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
-      <div class="lp-section">
-        <div class="lp-section-title">Templates</div>
-        <div class="lp-elements" id="templateList"></div>
-      </div>
-      <div class="lp-section">
-        <div class="lp-section-title">Elements</div>
-        <div class="lp-elements" id="elementList"></div>
-      </div>
-      <div class="lp-section">
-        <div class="lp-section-title">Presets</div>
-        <button class="lp-btn" id="savePresetBtn">💾 Save Preset</button>
-        <button class="lp-btn" id="loadPresetBtn">📂 Load Preset</button>
-        <div class="lp-elements" id="presetList"></div>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+      <div class="sidebar-content">
+        <div class="lp-section">
+          <div class="lp-section-title">Templates</div>
+          <div class="lp-items" id="templateList"></div>
+        </div>
+        <div class="lp-section">
+          <div class="lp-section-title">Rings</div>
+          <div class="lp-items" id="ringList"></div>
+          <button class="add-ring-btn" id="addRingBtn">+ Add Ring</button>
+        </div>
+        <div class="lp-section">
+          <div class="lp-section-title">Text & Shapes</div>
+          <div class="lp-items" id="elementList"></div>
+        </div>
+        <div class="lp-section">
+          <div class="lp-section-title">Presets</div>
+          <button class="lp-btn" id="savePresetBtn">💾 Save</button>
+          <button class="lp-btn" id="loadPresetBtn">📂 Load</button>
+          <div class="lp-items" id="presetList"></div>
+        </div>
       </div>
     </aside>
 
-    <!-- ═══ CENTER: Canvas ═══ -->
     <section class="workspace">
       <div class="canvas-area" id="viewport">
         <div class="canvas-wrap" id="stage">
           <canvas id="stampCanvas"></canvas>
         </div>
       </div>
+      <div class="bottom-bar">
+        <div class="zoom-controls">
+          <span style="font-size:9px;color:var(--text-dim)">Zoom</span>
+          <button class="tb-btn" id="zoomOut2">−</button>
+          <span class="zoom-val" id="zoomVal2">100%</span>
+          <button class="tb-btn" id="zoomIn2">+</button>
+          <button class="tb-btn" id="recenterBtn2" title="Recenter">⊕</button>
+        </div>
+        <span class="size-info" id="sizeInfo">2.5" × 2.5"</span>
+      </div>
     </section>
 
-    <!-- ═══ FLOATING CONTROLLER ═══ -->
     <div class="floating-panel" id="floatingPanel">
       <div class="fp-header" id="fpHeader">
         <span>⚙️ Controller</span>
         <button class="fp-close" id="fpClose">×</button>
       </div>
       <div class="fp-body" id="fpBody">
-        <div class="empty-state">
-          <div class="empty-icon">👆</div>
-          <div class="empty-text">Click an element to control it</div>
-        </div>
+        <div class="empty-state"><div class="empty-icon">👆</div><div class="empty-text">Click an element to control</div></div>
       </div>
     </div>
-
   </main>
 </div>
 
 <input type="file" id="importFile" accept="image/*" style="display:none">
 <div id="toast" class="toast"></div>
-
 <div class="modal-overlay" id="presetModal">
   <div class="modal">
-    <div class="modal-header">
-      <span id="presetModalTitle">Presets</span>
-      <button class="modal-close" id="presetModalClose">&times;</button>
-    </div>
+    <div class="modal-header"><span id="presetModalTitle">Presets</span><button class="modal-close" id="presetModalClose">×</button></div>
     <div class="modal-body" id="presetModalBody"></div>
   </div>
 </div>
-
 <script src="app.js"></script>
 </body>
 </html>
