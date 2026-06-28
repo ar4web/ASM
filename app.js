@@ -194,8 +194,8 @@ let targetPan = { x: 0, y: 0 }, currentPan = { x: 0, y: 0 };
 function setupCanvas() {
   if (canvasInitialized) { updateCanvasCSS(); return; }
   // 5x5 inches at 300 DPI = 1500x1500px
-  canvas.width = 5 * 300;
-  canvas.height = 5 * 300;
+  canvas.width = 2.5 * 300;
+  canvas.height = 2.5 * 300;
   canvasInitialized = true;
   updateCanvasCSS();
 }
@@ -203,7 +203,7 @@ function setupCanvas() {
 function updateCanvasCSS() {
   const vpW = viewport.clientWidth - 60;
   const vpH = viewport.clientHeight - 40;
-  const baseSize = Math.min(vpW, vpH, 500);
+  const baseSize = Math.min(vpW, vpH, 400);
   const size = baseSize * currentZoom;
   canvas.style.width = size + 'px';
   canvas.style.height = size + 'px';
