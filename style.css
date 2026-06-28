@@ -48,15 +48,21 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: var(-
 }
 .tb-left { display: flex; align-items: center; gap: 8px; }
 
-.sidebar-toggle {
-  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-sm); color: var(--text-mid); font-size: 15px;
-  transition: background .2s var(--ease), transform .3s var(--ease-bounce);
-}
-.sidebar-toggle:hover { background: var(--bg-hover); color: var(--text); }
-.sidebar-toggle:active { transform: scale(.85); }
-
+.brand-logo { width: 22px; height: 22px; }
 .brand { font-size: 11px; font-weight: 700; }
+
+.sidebar-toggle {
+  position: absolute; top: 8px; right: -14px; z-index: 10;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text-mid); font-size: 13px; cursor: pointer;
+  transition: background .2s var(--ease), transform .3s var(--ease-bounce), box-shadow .2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+.sidebar-toggle:hover { background: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(79,140,255,.4); }
+.sidebar-toggle:active { transform: scale(.9); }
+.left-panel.collapsed .sidebar-toggle { right: -14px; }
+.left-panel.collapsed .sidebar-toggle:hover { transform: rotate(180deg); }
 
 .tb-center { display: flex; align-items: center; gap: 8px; }
 
@@ -96,9 +102,10 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: var(-
 /* ═══ LEFT SIDEBAR ═══ */
 .left-panel {
   width: var(--left-w); background: var(--bg-surface); border-right: 1px solid var(--border);
-  overflow-y: auto; flex-shrink: 0; transition: width .3s var(--ease), opacity .25s var(--ease);
+  overflow-y: auto; overflow-x: visible; flex-shrink: 0; position: relative;
+  transition: width .3s var(--ease), opacity .25s var(--ease);
 }
-.left-panel.collapsed { width: 0; opacity: 0; border: none; }
+.left-panel.collapsed { width: 0; opacity: 0; border: none; overflow: hidden; }
 
 .lp-section { border-bottom: 1px solid var(--border-light); padding: 8px 0; }
 .lp-section:last-child { border-bottom: none; }
