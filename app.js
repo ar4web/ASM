@@ -106,7 +106,7 @@ function render() {
   cfg.layers.forEach(l => {
     if (!l.visible) return;
     ctx.globalAlpha = clamp(l.opacity / 100, 0, 1);
-    if (l.mode === 'curved') drawCurvedLayer(l, cx, cy, cfg.inkColor);
+    if (l.mode === 'curved') drawCurvedLayer(l, cx, cy, cfg.inkColor, rx, ry);
     else if (l.mode === 'straight') drawStraightLayer(l, cx, cy, cfg.inkColor);
   });
   ctx.globalAlpha = 1;
@@ -117,10 +117,9 @@ function render() {
   document.getElementById('zoomLabelMain').textContent = Math.round(cfg.editorZoom * 100) + '%';
 }
 
-function drawCurvedLayer(layer, cx, cy, color) {
+function drawCurvedLayer(layer, cx, cy, color, rx, ry) {
   if (!layer.text.trim()) return;
-  const fontPx = mmPx(layer.sizeMm);
-  const fontStr = safeWeight(layer.font, layer.weight) + ' ' + fontPx + 'px "' + layer.font + '"';
+  const fontPx = mmPx(layer.sizeMm), fontStr = safeWeight(layer.font, layer.weight) + ' ' + fontPx + 'px "' + layer.font + '"';
   const m = document.createElement('canvas').getContext('2d');
   m.font = fontStr; m.letterSpacing = layer.letterSpacing + 'px';
   const textW = Math.max(2, Math.ceil(m.measureText(layer.text).width));
@@ -130,8 +129,9 @@ function drawCurvedLayer(layer, cx, cy, color) {
   sc.font = fontStr; sc.fillStyle = color; sc.textAlign = 'center'; sc.textBaseline = 'middle';
   sc.translate(sw / 2, sh / 2); sc.fillText(layer.text, 0, 0);
   
-  const e = layer.radiusMm;
-  const textRx = mmPx(e), textRy = mmPx(e * (sz.w / sz.h || 1));
+  const r = layer.radiusMm;
+  const sz = stampSize();
+  const textRx = mmPx(r), textRy = mmPx(r * (sz.w / sz.h || 1));
   const slice = Math.max(1, Math.round(sh / 32));
   for (let x = 0; x < sw; x += slice) {
     const f = (x + slice / 2 - pad) / textW;
