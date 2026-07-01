@@ -130,8 +130,7 @@ function drawCurvedLayer(layer, cx, cy, color, rx, ry) {
   sc.translate(sw / 2, sh / 2); sc.fillText(layer.text, 0, 0);
   
   const r = layer.radiusMm;
-  const sz = stampSize();
-  const textRx = mmPx(r), textRy = mmPx(r * (sz.w / sz.h || 1));
+  const textRx = mmPx(r), textRy = mmPx(r * (rx / ry || 1));
   const slice = Math.max(1, Math.round(sh / 32));
   for (let x = 0; x < sw; x += slice) {
     const f = (x + slice / 2 - pad) / textW;
