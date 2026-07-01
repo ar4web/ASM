@@ -4,178 +4,98 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stamp Studio</title>
-  <link rel="icon" type="image/svg+xml" href="logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div class="app">
 
-  <!-- ═══ TOP BAR ═══ -->
+  <!-- Top Bar -->
   <header class="topbar">
-    <div class="tb-left">
-      <span class="brand">🖊️ Stamp Studio</span>
+    <span class="brand">🖊️ Stamp Studio</span>
+    
+    <div class="tools">
+      <button class="tool-btn active" data-tool="select" title="Select (V)">
+        <svg viewBox="0 0 24 24"><path d="M2 2l8 20L10 11l11-3L2 2z" fill="none" stroke="currentColor"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="text" title="Text (T)">
+        <svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h10" stroke="currentColor" fill="none"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="shape-rectangle" title="Rectangle">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="shape-circle" title="Circle">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke="currentColor" fill="none"/></svg>
+      </button>
     </div>
-    <div class="tb-center">
-      <!-- Editable Document Title -->
-      <div class="doc-title" id="docTitle">
-        <span class="doc-icon">📄</span>
-        <input type="text" class="doc-name-input" id="docNameInput" value="Untitled Stamp" placeholder="Untitled" maxlength="40">
-      </div>
-      <!-- Preset Save/Load -->
-      <button class="preset-btn" id="savePresetBtn" title="Save current config as preset">
-        <span>💾</span> Save Preset
-      </button>
-      <button class="preset-btn" id="loadPresetBtn" title="Load a saved preset">
-        <span>📂</span> Load Preset
-      </button>
-      <!-- Always-visible color palette -->
-      <div class="color-palette">
-        <div class="color-swatches" id="swatchRow"></div>
-        <input type="color" id="inkColorPicker" value="#1e3a8a" title="Custom color">
-        <input type="text" id="inkHex" value="#1e3a8a" maxlength="7" title="Hex color">
-      </div>
-    </div>
-    <div class="tb-right">
-      <button class="tb-btn" id="undoBtn" title="Undo (Ctrl+Z)">
-        <span class="btn-icon">↶</span>
-      </button>
-      <button class="tb-btn" id="redoBtn" title="Redo (Ctrl+Y)">
-        <span class="btn-icon">↷</span>
-      </button>
-      <div class="tb-divider"></div>
-      <button class="tb-btn" id="saveBtn" title="Save project (Ctrl+S)">
-        <span class="btn-icon">💾</span>
-        <span class="btn-label">Save</span>
-      </button>
-      <button class="tb-btn primary" id="exportBtn" title="Export PNG">
-        <span class="btn-icon">⬇</span>
-        <span class="btn-label">Export</span>
-      </button>
-      <button class="tb-btn danger" id="resetBtn" title="Reset to defaults">
-        <span class="btn-icon">↺</span>
-      </button>
+
+    <div class="actions">
+      <button class="action-btn" id="undoBtn" title="Undo">↶</button>
+      <button class="action-btn" id="redoBtn" title="Redo">↷</button>
+      <button class="action-btn primary" id="saveBtn" title="Save">💾</button>
+      <button class="action-btn primary" id="exportBtn" title="Export PNG">⬇ Export</button>
+      <span class="zoom" id="zoomLabelMain">100%</span>
     </div>
   </header>
 
-  <!-- ═══ MAIN AREA ═══ -->
+  <!-- Main -->
   <main class="main">
 
-    <!-- ═══ LEFT SIDEBAR: Element List ═══ -->
+    <!-- Left Panel -->
     <aside class="left-panel">
-      <div class="lp-section">
-        <div class="lp-section-title">Rings</div>
-        <div class="lp-element" data-element="outer-ring">
-          <span class="lp-dot lp-dot-outer"></span>
-          <span class="lp-name">Outer Ring</span>
-          <span class="lp-value" id="valOuterRing">1.8</span>
-        </div>
-        <div class="lp-element" data-element="inner-ring">
-          <span class="lp-dot lp-dot-inner"></span>
-          <span class="lp-name">Inner Ring</span>
-          <span class="lp-value" id="valInnerRing">0.8</span>
-        </div>
-        <div class="lp-element" data-element="center-ring" style="display:none">
-          <span class="lp-dot lp-dot-center"></span>
-          <span class="lp-name">Center Ring</span>
-          <span class="lp-value" id="valCenterRing">0.5</span>
-        </div>
+      <div class="section-title">Rings</div>
+      <div class="ring-item" data-element="outer-ring">
+        <span><span class="dot outer"></span>Outer</span>
+        <span id="valOuterRing">1.8mm</span>
+      </div>
+      <div class="ring-item" data-element="inner-ring">
+        <span><span class="dot inner"></span>Inner</span>
+        <span id="valInnerRing">0.8mm</span>
       </div>
 
-      <div class="lp-section">
-        <div class="lp-section-title">Arc Text</div>
-        <div class="lp-element" data-element="arc-top">
-          <span class="lp-icon">⌒</span>
-          <span class="lp-name">Top Arc</span>
-        </div>
-        <div class="lp-element" data-element="arc-bottom">
-          <span class="lp-icon">⌢</span>
-          <span class="lp-name">Bottom Arc</span>
-        </div>
-      </div>
+      <div class="section-title">Color</div>
+      <div id="swatchRow" style="display:flex;gap:4px;flex-wrap:wrap;padding:0 6px;margin-bottom:12px;"></div>
+      <input type="color" id="inkColorPicker" value="#1e3a8a" style="display:none">
+      <input type="text" id="inkHex" value="#1e3a8a" class="prop-input" placeholder="#000000">
 
-      <div class="lp-section">
-        <div class="lp-section-title">Straight Text</div>
-        <div class="lp-elements" id="straightTextList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Shapes</div>
-        <div class="lp-elements" id="shapeList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Images</div>
-        <div class="lp-elements" id="imageList"></div>
-      </div>
-
-      <div class="lp-section">
-        <div class="lp-section-title">Stamp</div>
-        <div class="lp-element" data-element="stamp-size">
-          <span class="lp-icon">⊡</span>
-          <span class="lp-name">Size</span>
-          <span class="lp-value" id="valStampSize">62×36</span>
-        </div>
-        <div class="lp-element" data-element="stamp-offset">
-          <span class="lp-icon">⊹</span>
-          <span class="lp-name">Offset</span>
-          <span class="lp-value" id="valStampOffset">0, 0</span>
-        </div>
-      </div>
+      <div class="section-title">Layers</div>
+      <div id="layersList"></div>
     </aside>
 
-    <!-- ═══ CENTER: Canvas ═══ -->
+    <!-- Workspace -->
     <section class="workspace">
       <div class="canvas-area" id="viewport">
         <div class="canvas-wrap" id="stage">
           <canvas id="stampCanvas"></canvas>
         </div>
-        <div class="canvas-hud">
-          <span id="zoomLabel">100%</span>
-        </div>
       </div>
 
-      <!-- Template Picker -->
-      <div class="template-bar">
-        <span class="tpl-label">Template:</span>
-        <div class="tpl-options" id="templateOptions"></div>
-      </div>
+      <div class="template-bar" id="templateOptions"></div>
     </section>
 
-    <!-- ═══ RIGHT: Floating Properties Panel ═══ -->
+    <!-- Right Panel -->
     <aside class="right-panel" id="rightPanel">
-      <div class="rp-header" id="rpHeader">Properties</div>
+      <div class="prop-title" id="rpHeader">Properties</div>
       <div class="rp-body" id="rpBody">
-        <div class="empty-state">
-          <div class="empty-icon">👆</div>
-          <div class="empty-text">Hover over an element to select it</div>
-        </div>
+        <div style="color:var(--text-dim);font-size:11px;padding:20px 0">Select layer to edit</div>
       </div>
     </aside>
 
   </main>
 </div>
 
-<!-- Hidden file inputs -->
-<input type="file" id="importFile" accept="image/*" style="display:none">
-<input type="file" id="loadConfigFile" accept=".json" style="display:none">
-
-<!-- Toast -->
+<input type="file" id="importFile" accept="image/*">
 <div id="toast" class="toast"></div>
-
-<!-- Preset Modal -->
 <div class="modal-overlay" id="presetModal">
   <div class="modal">
     <div class="modal-header">
-      <span id="presetModalTitle">Save Preset</span>
-      <button class="modal-close" id="presetModalClose">&times;</button>
+      <span id="presetModalTitle">Preset</span>
+      <button class="modal-close" id="presetModalClose">×</button>
     </div>
-    <div class="modal-body" id="presetModalBody">
-      <!-- Dynamic content -->
-    </div>
+    <div class="modal-body" id="presetModalBody"></div>
   </div>
 </div>
 
